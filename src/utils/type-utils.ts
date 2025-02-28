@@ -89,14 +89,12 @@ export function getServiceClientDefinition(serviceType: protobuf.Service): strin
     let definition = `export interface ${serviceType.name}Client {\n`;
 
     serviceType.methodsArray.forEach(method => {
+        // Convert method name to camelCase
+        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
         const inputType = getInterfaceName(method.requestType);
         const outputType = getInterfaceName(method.responseType);
 
-        if (method.responseStream) {
-            definition += `  ${method.name}(request: ${inputType}): Observable<${outputType}>;\n`;
-        } else {
-            definition += `  ${method.name}(request: ${inputType}): Promise<${outputType}>;\n`;
-        }
+        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
     });
 
     definition += '}\n';
@@ -109,17 +107,15 @@ export function getServiceClientDefinition(serviceType: protobuf.Service): strin
  * @returns TypeScript interface definition for the implementation
  */
 export function getServiceImplementationDefinition(serviceType: protobuf.Service): string {
-    let definition = `export interface ${serviceType.name}Implementation {\n`;
+    let definition = `export interface ${serviceType.name}Interface {\n`;
 
     serviceType.methodsArray.forEach(method => {
+        // Convert method name to camelCase
+        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
         const inputType = getInterfaceName(method.requestType);
         const outputType = getInterfaceName(method.responseType);
 
-        if (method.responseStream) {
-            definition += `  ${method.name}(request: ${inputType}): Observable<${outputType}>;\n`;
-        } else {
-            definition += `  ${method.name}(request: ${inputType}): Promise<${outputType}> | ${outputType};\n`;
-        }
+        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
     });
 
     definition += '}\n';
