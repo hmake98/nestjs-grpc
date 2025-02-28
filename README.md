@@ -7,7 +7,7 @@ A NestJS package for type-safe gRPC communication between microservices.
 - **Protocol Buffer Integration**: Seamless integration with `.proto` files
 - **Type-Safe Communication**: Automatic TypeScript interface generation from proto definitions
 - **NestJS Integration**: Custom decorators for gRPC controllers and methods
-- **Client Factory**: Simple API for consuming gRPC services
+- **Client Factory**: Simple API for consuming gRPC services with Observable support
 - **CLI Tool**: Generate TypeScript types from proto files with a single command
 - **Exception Handling**: Proper error handling and status codes for gRPC
 
@@ -70,13 +70,19 @@ This will generate TypeScript interfaces in `./src/generated/user.ts`:
 ```typescript
 // Generated interfaces
 export interface GetUserRequest {
-  id: string;
+  id?: string;
 }
 
 export interface User {
-  id: string;
-  name: string;
-  email: string;
+  id?: string;
+  name?: string;
+  email?: string;
+}
+
+export interface UserServiceClient {
+  getUser(request: GetUserRequest): Observable<User>;
+  createUser(request: CreateUserRequest): Observable<User>;
+  listUsers(request: ListUsersRequest): Observable<ListUsersResponse>;
 }
 
 // etc...
@@ -108,6 +114,7 @@ export class AppModule {}
 // user.service.ts
 import { Injectable } from '@nestjs/common';
 import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { Observable, of } from 'rxjs';
 import { 
   GetUserRequest, 
   User, 
@@ -121,17 +128,17 @@ import {
 export class UserService {
   private users: User[] = [];
 
-  @GrpcMethod('GetUser')
-  getUser(request: GetUserRequest): User {
+  @GrpcMethod('getUser')
+  getUser(request: GetUserRequest): Observable<User> {
     const user = this.users.find(u => u.id === request.id);
     if (!user) {
       throw new Error('User not found');
     }
-    return user;
+    return of(user);
   }
 
-  @GrpcMethod('CreateUser')
-  createUser(request: CreateUserRequest): User {
+  @GrpcMethod('createUser')
+  createUser(request: CreateUserRequest): Observable<User> {
     const user: User = {
       id: Date.now().toString(),
       name: request.name,
@@ -139,19 +146,19 @@ export class UserService {
     };
     
     this.users.push(user);
-    return user;
+    return of(user);
   }
 
-  @GrpcMethod('ListUsers')
-  listUsers(request: ListUsersRequest): ListUsersResponse {
+  @GrpcMethod('listUsers')
+  listUsers(request: ListUsersRequest): Observable<ListUsersResponse> {
     const { page = 1, limit = 10 } = request;
     const startIdx = (page - 1) * limit;
     const endIdx = startIdx + limit;
     
-    return {
+    return of({
       users: this.users.slice(startIdx, endIdx),
       total: this.users.length,
-    };
+    });
   }
 }
 ```
@@ -162,6 +169,7 @@ export class UserService {
 // client.service.ts
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { GrpcClientFactory } from 'nestjs-grpc';
+import { Observable } from 'rxjs';
 import { UserServiceClient, User, GetUserRequest } from './generated/user';
 
 @Injectable()
@@ -174,11 +182,15 @@ export class ClientService implements OnModuleInit {
     this.userClient = this.grpcClientFactory.create<UserServiceClient>('UserService');
   }
 
-  async getUser(id: string): Promise<User> {
+  getUser(id: string): Observable<User> {
     return this.userClient.getUser({ id });
   }
 }
 ```
+
+## Client/Server Example
+
+For a complete example of setting up both a gRPC server and client in a single project, see the [example directory](https://github.com/hmake98/nestjs-grpc-example).
 
 ## Advanced Configuration
 
@@ -232,16 +244,19 @@ Use the built-in exception classes for proper gRPC error codes:
 
 ```typescript
 import { GrpcException } from 'nestjs-grpc';
+import { Observable, throwError } from 'rxjs';
 
 @GrpcService('UserService')
 export class UserService {
-  @GrpcMethod('GetUser')
-  getUser(request: GetUserRequest): User {
+  @GrpcMethod('getUser')
+  getUser(request: GetUserRequest): Observable<User> {
     const user = this.users.find(u => u.id === request.id);
     if (!user) {
-      throw GrpcException.notFound(`User with ID ${request.id} not found`);
+      return throwError(() => 
+        GrpcException.notFound(`User with ID ${request.id} not found`)
+      );
     }
-    return user;
+    return of(user);
   }
 }
 ```
