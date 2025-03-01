@@ -55,7 +55,8 @@ export function getEnumDefinition(enumType: protobuf.Enum): string {
     let definition = `export enum ${enumType.name} {\n`;
 
     Object.keys(enumType.values).forEach(key => {
-        definition += `  ${key} = ${enumType.values[key]},\n`;
+        // Don't include the numeric value, just the name
+        definition += `  ${key},\n`;
     });
 
     definition += '}\n';
@@ -137,8 +138,8 @@ export function generateTypeDefinitions(root: protobuf.Root): string {
             if (nested instanceof protobuf.Type) {
                 typeDefinitions += getMessageDefinition(nested) + '\n';
             } else if (nested instanceof protobuf.Service) {
+                // Only generate client interface, skip service implementation interface
                 typeDefinitions += getServiceClientDefinition(nested) + '\n';
-                typeDefinitions += getServiceImplementationDefinition(nested) + '\n';
             } else if (nested instanceof protobuf.Enum) {
                 typeDefinitions += getEnumDefinition(nested) + '\n';
             } else if (nested instanceof protobuf.Namespace) {
