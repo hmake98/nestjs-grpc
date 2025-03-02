@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import * as path from 'path';
-import * as chalk from 'chalk';
 import { generateCommand } from './commands/generate.command';
 
 const program = new Command();
@@ -14,9 +12,14 @@ program
 program
     .command('generate')
     .description('Generate TypeScript definitions from protobuf files')
-    .option('-p, --proto <pattern>', 'Pattern to match proto files', './protos/**/*.proto')
+    .option(
+        '-p, --proto <pattern>',
+        'Path to proto file, directory, or glob pattern',
+        './protos/**/*.proto',
+    )
     .option('-o, --output <dir>', 'Output directory for generated files', './src/generated')
     .option('-w, --watch', 'Watch mode for file changes', false)
+    .option('-r, --recursive', 'Recursively search directories for .proto files', true)
     .action(generateCommand);
 
 program.parse(process.argv);

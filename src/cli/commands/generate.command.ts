@@ -9,11 +9,26 @@ interface GenerateCommandOptions {
     proto: string;
     output: string;
     watch: boolean;
+    recursive?: boolean;
 }
 
 export async function generateCommand(options: GenerateCommandOptions): Promise<void> {
     try {
-        const protoFiles = glob.sync(options.proto);
+        // Check if proto is a directory without glob pattern
+        const isDirectory =
+            fs.existsSync(options.proto) && fs.statSync(options.proto).isDirectory();
+
+        // If it's a directory and doesn't end with a glob pattern, add it
+        if (isDirectory && !options.proto.endsWith('/**/*.proto')) {
+            const normalizedPath = options.proto.endsWith('/')
+                ? options.proto
+                : `${options.proto}/`;
+
+            options.proto = `${normalizedPath}**/*.proto`;
+            console.log(chalk.blue(`Directory detected, using pattern: ${options.proto}`));
+        }
+
+        const protoFiles = glob.sync(options.proto, { ignore: 'node_modules/**' });
 
         if (protoFiles.length === 0) {
             console.log(chalk.yellow(`No proto files found matching pattern: ${options.proto}`));
@@ -31,29 +46,42 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         if (options.watch) {
             console.log(chalk.blue('\nWatching for changes...'));
 
-            const watcher = chokidar.watch(options.proto, {
+            const watchPatterns = isDirectory
+                ? options.proto
+                : protoFiles.map(file => path.dirname(file) + '/**/*.proto');
+
+            const watcher = chokidar.watch(watchPatterns, {
                 persistent: true,
                 ignoreInitial: true,
+                ignorePermissionErrors: true,
+                ignored: 'node_modules/**',
             });
 
             watcher.on('add', async filePath => {
-                console.log(chalk.green(`File added: ${filePath}`));
-                await generateTypesForFile(filePath, options.output);
-            });
-
-            watcher.on('change', async filePath => {
-                console.log(chalk.green(`File changed: ${filePath}`));
-                await generateTypesForFile(filePath, options.output);
-            });
-
-            watcher.on('unlink', filePath => {
-                const outputFile = getOutputPath(filePath, options.output);
-                if (fs.existsSync(outputFile)) {
-                    fs.unlinkSync(outputFile);
-                    console.log(chalk.yellow(`Removed generated file: ${outputFile}`));
+                if (filePath.endsWith('.proto')) {
+                    console.log(chalk.green(`File added: ${filePath}`));
+                    await generateTypesForFile(filePath, options.output);
                 }
             });
 
+            watcher.on('change', async filePath => {
+                if (filePath.endsWith('.proto')) {
+                    console.log(chalk.green(`File changed: ${filePath}`));
+                    await generateTypesForFile(filePath, options.output);
+                }
+            });
+
+            watcher.on('unlink', filePath => {
+                if (filePath.endsWith('.proto')) {
+                    const outputFile = getOutputPath(filePath, options.output);
+                    if (fs.existsSync(outputFile)) {
+                        fs.unlinkSync(outputFile);
+                        console.log(chalk.yellow(`Removed generated file: ${outputFile}`));
+                    }
+                }
+            });
+
+            console.log(chalk.blue('Press Ctrl+C to stop watching'));
             // Keep process alive
             process.stdin.resume();
         }
@@ -66,6 +94,12 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 async function generateTypesForFile(protoFile: string, outputDir: string): Promise<void> {
     try {
         const outputFile = getOutputPath(protoFile, outputDir);
+
+        // Create output directory if it doesn't exist
+        const outputDirPath = path.dirname(outputFile);
+        if (!fs.existsSync(outputDirPath)) {
+            fs.mkdirSync(outputDirPath, { recursive: true });
+        }
 
         // Load the proto file
         const root = await protobuf.load(protoFile);
@@ -148,7 +182,17 @@ function processServiceType(service: protobuf.Service, fullName: string): string
 
     definition += '}\n\n';
 
-    // Removed the service interface generation
+    // Also generate a service interface for implementing the service
+    definition += `export interface ${service.name}Interface {\n`;
+    service.methodsArray.forEach(method => {
+        // Convert method name to camelCase
+        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
+        const inputType = method.requestType.split('.').pop();
+        const outputType = method.responseType.split('.').pop();
+
+        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+    });
+    definition += '}\n\n';
 
     return definition;
 }
@@ -157,8 +201,7 @@ function processEnumType(enumType: protobuf.Enum, fullName: string): string {
     let definition = `export enum ${enumType.name} {\n`;
 
     Object.keys(enumType.values).forEach(key => {
-        // Don't include the numeric value, just the name
-        definition += `  ${key},\n`;
+        definition += `  ${key} = ${enumType.values[key]},\n`;
     });
 
     definition += '}\n\n';
