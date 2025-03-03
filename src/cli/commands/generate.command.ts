@@ -169,6 +169,7 @@ function processMessageType(type: protobuf.Type, fullName: string): string {
 }
 
 function processServiceType(service: protobuf.Service, fullName: string): string {
+    // Generate the Client interface
     let definition = `export interface ${service.name}Client {\n`;
 
     service.methodsArray.forEach(method => {
@@ -182,26 +183,16 @@ function processServiceType(service: protobuf.Service, fullName: string): string
 
     definition += '}\n\n';
 
-    // Also generate a service interface for implementing the service
-    definition += `export interface ${service.name}Interface {\n`;
-    service.methodsArray.forEach(method => {
-        // Convert method name to camelCase
-        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
-        const inputType = method.requestType.split('.').pop();
-        const outputType = method.responseType.split('.').pop();
-
-        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
-    });
-    definition += '}\n\n';
-
     return definition;
 }
 
 function processEnumType(enumType: protobuf.Enum, fullName: string): string {
     let definition = `export enum ${enumType.name} {\n`;
 
+    // FIX: Make the enum values without numeric assignments
     Object.keys(enumType.values).forEach(key => {
-        definition += `  ${key} = ${enumType.values[key]},\n`;
+        // Just list the enum values without the numeric assignment
+        definition += `  ${key},\n`;
     });
 
     definition += '}\n\n';
