@@ -22,41 +22,48 @@ export const TYPE_MAPPING: Record<string, string> = {
 };
 
 /**
+ * Simple options for type generation
+ */
+export interface TypeOptions {
+    /** Whether to generate classes instead of interfaces */
+    useClasses?: boolean;
+
+    /** Whether to include comments from the proto file */
+    includeComments?: boolean;
+
+    /** Package name to filter (only generate types for this package) */
+    packageFilter?: string;
+}
+
+/**
  * Maps a protobuf type to a TypeScript type
  * @param type The protobuf type
  * @param isRepeated Whether the field is repeated
  * @returns The corresponding TypeScript type
  */
 export function mapProtoTypeToTs(type: string, isRepeated = false): string {
-    // Handle enum types or message types
     const mappedType = TYPE_MAPPING[type] || type;
     return isRepeated ? `${mappedType}[]` : mappedType;
 }
 
 /**
- * Gets the TypeScript interface name from a protobuf message type
- * @param messageName The protobuf message name
- * @returns The TypeScript interface name
- */
-export function getInterfaceName(messageName: string): string {
-    // Remove package name if present
-    const parts = messageName.split('.');
-    const name = parts[parts.length - 1];
-
-    return name;
-}
-
-/**
  * Gets a TypeScript representation of a protobuf enum
  * @param enumType The protobuf enum
+ * @param options Generation options
  * @returns TypeScript enum definition
  */
-export function getEnumDefinition(enumType: protobuf.Enum): string {
-    let definition = `export enum ${enumType.name} {\n`;
+export function getEnumDefinition(enumType: protobuf.Enum, options?: TypeOptions): string {
+    let definition = '';
 
-    Object.keys(enumType.values).forEach(key => {
-        // Fix: Remove numeric values from enum
-        definition += `  ${key} = ${enumType.values[key]},\n`;
+    // Add comment if available and comments are enabled
+    if (options?.includeComments && enumType.comment) {
+        definition += `/**\n * ${enumType.comment.replace(/\n/g, '\n * ')}\n */\n`;
+    }
+
+    definition += `export enum ${enumType.name} {\n`;
+
+    Object.entries(enumType.values).forEach(([key, value]) => {
+        definition += `  ${key} = ${value},\n`;
     });
 
     definition += '}\n';
@@ -64,14 +71,32 @@ export function getEnumDefinition(enumType: protobuf.Enum): string {
 }
 
 /**
- * Gets a TypeScript interface representation of a protobuf message
+ * Gets a TypeScript interface/class representation of a protobuf message
  * @param messageType The protobuf message type
- * @returns TypeScript interface definition
+ * @param options Generation options
+ * @returns TypeScript interface/class definition
  */
-export function getMessageDefinition(messageType: protobuf.Type): string {
-    let definition = `export interface ${messageType.name} {\n`;
+export function getMessageDefinition(messageType: protobuf.Type, options?: TypeOptions): string {
+    let definition = '';
+
+    // Add comment if available and comments are enabled
+    if (options?.includeComments && messageType.comment) {
+        definition += `/**\n * ${messageType.comment.replace(/\n/g, '\n * ')}\n */\n`;
+    }
+
+    // Generate class or interface
+    if (options?.useClasses) {
+        definition += `export class ${messageType.name} {\n`;
+    } else {
+        definition += `export interface ${messageType.name} {\n`;
+    }
 
     messageType.fieldsArray.forEach(field => {
+        // Add field comment if available and comments are enabled
+        if (options?.includeComments && field.comment) {
+            definition += `  /**\n   * ${field.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
+        }
+
         const fieldType = mapProtoTypeToTs(field.type, field.repeated);
         const isOptional = !field.required;
         definition += `  ${field.name}${isOptional ? '?' : ''}: ${fieldType};\n`;
@@ -84,18 +109,39 @@ export function getMessageDefinition(messageType: protobuf.Type): string {
 /**
  * Gets a TypeScript interface for a gRPC service client
  * @param serviceType The protobuf service type
+ * @param options Generation options
  * @returns TypeScript interface definition for the client
  */
-export function getServiceClientDefinition(serviceType: protobuf.Service): string {
-    let definition = `export interface ${serviceType.name}Client {\n`;
+export function getServiceClientDefinition(
+    serviceType: protobuf.Service,
+    options?: TypeOptions,
+): string {
+    let definition = '';
+
+    // Add comment if available and comments are enabled
+    if (options?.includeComments && serviceType.comment) {
+        definition += `/**\n * ${serviceType.comment.replace(/\n/g, '\n * ')}\n */\n`;
+    }
+
+    definition += `export interface ${serviceType.name}Client {\n`;
 
     serviceType.methodsArray.forEach(method => {
+        // Add method comment if available and comments are enabled
+        if (options?.includeComments && method.comment) {
+            definition += `  /**\n   * ${method.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
+        }
+
         // Convert method name to camelCase
         const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
-        const inputType = getInterfaceName(method.requestType);
-        const outputType = getInterfaceName(method.responseType);
+        const inputType = method.requestType.split('.').pop();
+        const outputType = method.responseType.split('.').pop();
 
-        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+        // Handle streaming methods
+        if (method.responseStream) {
+            definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+        } else {
+            definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+        }
     });
 
     definition += '}\n';
@@ -105,18 +151,39 @@ export function getServiceClientDefinition(serviceType: protobuf.Service): strin
 /**
  * Gets a TypeScript interface for a gRPC service implementation
  * @param serviceType The protobuf service type
+ * @param options Generation options
  * @returns TypeScript interface definition for the implementation
  */
-export function getServiceImplementationDefinition(serviceType: protobuf.Service): string {
-    let definition = `export interface ${serviceType.name}Interface {\n`;
+export function getServiceInterfaceDefinition(
+    serviceType: protobuf.Service,
+    options?: TypeOptions,
+): string {
+    let definition = '';
+
+    // Add comment if available and comments are enabled
+    if (options?.includeComments && serviceType.comment) {
+        definition += `/**\n * Controller interface for ${serviceType.name} service\n */\n`;
+    }
+
+    definition += `export interface ${serviceType.name}Interface {\n`;
 
     serviceType.methodsArray.forEach(method => {
+        // Add method comment if available and comments are enabled
+        if (options?.includeComments && method.comment) {
+            definition += `  /**\n   * ${method.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
+        }
+
         // Convert method name to camelCase
         const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
-        const inputType = getInterfaceName(method.requestType);
-        const outputType = getInterfaceName(method.responseType);
+        const inputType = method.requestType.split('.').pop();
+        const outputType = method.responseType.split('.').pop();
 
-        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+        // Handle streaming methods
+        if (method.responseStream) {
+            definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+        } else {
+            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}> | Observable<${outputType}>;\n`;
+        }
     });
 
     definition += '}\n';
@@ -126,30 +193,38 @@ export function getServiceImplementationDefinition(serviceType: protobuf.Service
 /**
  * Generates TypeScript type definitions from a protobuf root
  * @param root The protobuf root
+ * @param options Generation options
  * @returns The generated TypeScript definitions
  */
-export function generateTypeDefinitions(root: protobuf.Root): string {
+export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptions): string {
     let typeDefinitions = '// This file is auto-generated by nestjs-grpc\n\n';
     typeDefinitions += "import { Observable } from 'rxjs';\n\n";
 
-    // Process all nested items
-    function processNamespace(namespace: protobuf.NamespaceBase): void {
+    // Process all nested types recursively
+    function processNamespace(namespace: protobuf.NamespaceBase, prefix = ''): void {
         namespace.nestedArray.forEach(nested => {
+            const fullName = prefix ? `${prefix}.${nested.name}` : nested.name;
+
+            // Skip if package filter is provided and doesn't match
+            if (options?.packageFilter && !fullName.startsWith(options.packageFilter)) {
+                return;
+            }
+
             if (nested instanceof protobuf.Type) {
-                typeDefinitions += getMessageDefinition(nested) + '\n';
+                typeDefinitions += getMessageDefinition(nested, options) + '\n';
+                // Process nested messages
+                processNamespace(nested, fullName);
             } else if (nested instanceof protobuf.Service) {
-                // Fix: Only generate client interface, remove service implementation interface
-                typeDefinitions += getServiceClientDefinition(nested) + '\n';
-                // Skip the service interface generation
+                typeDefinitions += getServiceClientDefinition(nested, options) + '\n';
+                typeDefinitions += getServiceInterfaceDefinition(nested, options) + '\n';
             } else if (nested instanceof protobuf.Enum) {
-                typeDefinitions += getEnumDefinition(nested) + '\n';
+                typeDefinitions += getEnumDefinition(nested, options) + '\n';
             } else if (nested instanceof protobuf.Namespace) {
-                processNamespace(nested);
+                processNamespace(nested, fullName);
             }
         });
     }
 
     processNamespace(root);
-
     return typeDefinitions;
 }

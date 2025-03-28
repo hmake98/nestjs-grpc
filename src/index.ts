@@ -13,6 +13,9 @@ export * from './interfaces';
 // Exceptions
 export * from './exceptions';
 
+// Metadata handling
+export * from './metadata';
+
 // Constants
 export { GrpcErrorCode } from './constants';
 

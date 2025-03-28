@@ -1,26 +1,39 @@
-import { Catch, RpcExceptionFilter, ArgumentsHost, HttpException } from '@nestjs/common';
+import {
+    Catch,
+    RpcExceptionFilter,
+    ArgumentsHost,
+    HttpException,
+    HttpStatus,
+    Logger,
+} from '@nestjs/common';
 import { Observable, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
-import { status } from '@grpc/grpc-js';
+import { status, Metadata } from '@grpc/grpc-js';
 import { GrpcException } from './grpc.exception';
 import { GrpcErrorCode } from '../constants';
 
 /**
- * Exception filter that handles gRPC exceptions and converts them to the appropriate gRPC status
+ * Exception filter that handles gRPC exceptions and converts them to the appropriate gRPC status with metadata
  */
 @Catch(RpcException)
 export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
-    catch(exception: RpcException, host: ArgumentsHost): Observable<any> {
+    private readonly logger = new Logger(GrpcExceptionFilter.name);
+
+    catch(exception: RpcException, _host: ArgumentsHost): Observable<any> {
         let statusCode: number;
         let message: string;
         let details: any = null;
-        let metadata: Record<string, string> = {};
+        let metadata: Metadata = new Metadata();
 
         if (exception instanceof GrpcException) {
             statusCode = exception.getCode();
             message = exception.message;
             details = exception.getDetails();
-            metadata = exception.getMetadata();
+
+            // Use the metadata from the exception
+            metadata = exception.toMetadata();
+
+            this.logger.debug(`Transformed gRPC exception: [${statusCode}] ${message}`);
         } else {
             // Generic RPC exception handling
             const error = exception.getError();
@@ -29,6 +42,19 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
             if (error instanceof HttpException) {
                 statusCode = this.mapHttpToGrpcStatus(error.getStatus());
                 message = error.message;
+
+                // Add HTTP status to metadata
+                metadata.add('http-status', error.getStatus().toString());
+
+                // Add response data to details if available
+                const response = error.getResponse();
+                if (typeof response === 'object' && response !== null) {
+                    details = response;
+                }
+
+                this.logger.debug(
+                    `Transformed HTTP exception: [${error.getStatus()} → ${statusCode}] ${message}`,
+                );
             } else {
                 statusCode = GrpcErrorCode.UNKNOWN;
                 message =
@@ -41,8 +67,16 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
                     const httpStatus = Number(error.status);
                     if (!isNaN(httpStatus)) {
                         statusCode = this.mapHttpToGrpcStatus(httpStatus);
+                        metadata.add('http-status', httpStatus.toString());
                     }
                 }
+
+                // If we have an object, include it as details
+                if (typeof error === 'object' && error !== null) {
+                    details = error;
+                }
+
+                this.logger.debug(`Transformed generic exception: [${statusCode}] ${message}`);
             }
         }
 
@@ -59,37 +93,41 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
 
     /**
      * Maps HTTP status code to gRPC status code
-     * @param status HTTP status code
+     * @param httpStatus HTTP status code
      * @returns gRPC status code
      */
     private mapHttpToGrpcStatus(httpStatus: number): number {
         switch (httpStatus) {
-            case 400:
+            case HttpStatus.BAD_REQUEST:
                 return status.INVALID_ARGUMENT;
-            case 401:
+            case HttpStatus.UNAUTHORIZED:
                 return status.UNAUTHENTICATED;
-            case 403:
+            case HttpStatus.FORBIDDEN:
                 return status.PERMISSION_DENIED;
-            case 404:
+            case HttpStatus.NOT_FOUND:
                 return status.NOT_FOUND;
-            case 409:
+            case HttpStatus.CONFLICT:
                 return status.ALREADY_EXISTS;
-            case 429:
+            case HttpStatus.GONE:
+                return status.NOT_FOUND;
+            case HttpStatus.TOO_MANY_REQUESTS:
                 return status.RESOURCE_EXHAUSTED;
-            case 500:
+            case HttpStatus.INTERNAL_SERVER_ERROR:
                 return status.INTERNAL;
-            case 501:
+            case HttpStatus.NOT_IMPLEMENTED:
                 return status.UNIMPLEMENTED;
-            case 502:
-            case 503:
-            case 504:
+            case HttpStatus.BAD_GATEWAY:
+            case HttpStatus.SERVICE_UNAVAILABLE:
+            case HttpStatus.GATEWAY_TIMEOUT:
                 return status.UNAVAILABLE;
-            case 408:
+            case HttpStatus.REQUEST_TIMEOUT:
                 return status.DEADLINE_EXCEEDED;
-            case 412:
+            case HttpStatus.PRECONDITION_FAILED:
                 return status.FAILED_PRECONDITION;
-            case 413:
+            case HttpStatus.PAYLOAD_TOO_LARGE:
                 return status.RESOURCE_EXHAUSTED;
+            case HttpStatus.UNPROCESSABLE_ENTITY:
+                return status.INVALID_ARGUMENT;
             default:
                 return status.UNKNOWN;
         }

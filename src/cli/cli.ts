@@ -1,13 +1,24 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { generateCommand } from './commands/generate.command';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import process from 'process';
+import { generateCommand } from './commands';
+
+// Get package version using a more compatible approach
+let packageVersion = '0.1.0';
+try {
+    // We'll use process.cwd() which is safe across module systems
+    const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+    packageVersion = packageJson.version || '0.1.0';
+} catch (error) {
+    // Fallback to env var if available
+    packageVersion = process.env.npm_package_version || '0.1.0';
+}
 
 const program = new Command();
 
-program
-    .name('nestjs-grpc')
-    .description('CLI tool for NestJS gRPC package')
-    .version(process.env.npm_package_version || '0.1.0');
+program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(packageVersion);
 
 program
     .command('generate')
@@ -19,6 +30,9 @@ program
     )
     .option('-o, --output <dir>', 'Output directory for generated files', './src/generated')
     .option('-w, --watch', 'Watch mode for file changes', false)
+    .option('-c, --classes', 'Generate classes instead of interfaces', false)
+    .option('--no-comments', 'Disable comments in generated files')
+    .option('-f, --package-filter <package>', 'Filter by package name')
     .option('-r, --recursive', 'Recursively search directories for .proto files', true)
     .action(generateCommand);
 

@@ -1,22 +1,25 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import * as glob from 'glob';
-import * as chalk from 'chalk';
+import { existsSync, statSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
+import { dirname, basename, join } from 'path';
+import { globSync } from 'glob';
+import chalk from 'chalk';
 import * as protobuf from 'protobufjs';
-import * as chokidar from 'chokidar';
+import { watch } from 'chokidar';
+import { generateTypeDefinitions, TypeOptions } from 'src/utils';
 
 interface GenerateCommandOptions {
     proto: string;
     output: string;
     watch: boolean;
     recursive?: boolean;
+    classes?: boolean;
+    comments?: boolean;
+    packageFilter?: string;
 }
 
 export async function generateCommand(options: GenerateCommandOptions): Promise<void> {
     try {
         // Check if proto is a directory without glob pattern
-        const isDirectory =
-            fs.existsSync(options.proto) && fs.statSync(options.proto).isDirectory();
+        const isDirectory = existsSync(options.proto) && statSync(options.proto).isDirectory();
 
         // If it's a directory and doesn't end with a glob pattern, add it
         if (isDirectory && !options.proto.endsWith('/**/*.proto')) {
@@ -28,7 +31,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
             console.log(chalk.blue(`Directory detected, using pattern: ${options.proto}`));
         }
 
-        const protoFiles = glob.sync(options.proto, { ignore: 'node_modules/**' });
+        const protoFiles = globSync(options.proto, { ignore: 'node_modules/**' });
 
         if (protoFiles.length === 0) {
             console.log(chalk.yellow(`No proto files found matching pattern: ${options.proto}`));
@@ -37,9 +40,16 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         console.log(chalk.blue(`Found ${protoFiles.length} proto file(s)`));
 
+        // Create type generation options from command options
+        const typeOptions: TypeOptions = {
+            useClasses: options.classes || false,
+            includeComments: options.comments !== false,
+            packageFilter: options.packageFilter,
+        };
+
         // Initial generation
         for (const protoFile of protoFiles) {
-            await generateTypesForFile(protoFile, options.output);
+            await generateTypesForFile(protoFile, options.output, typeOptions);
         }
 
         // Setup watch mode if requested
@@ -48,9 +58,9 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
             const watchPatterns = isDirectory
                 ? options.proto
-                : protoFiles.map(file => path.dirname(file) + '/**/*.proto');
+                : protoFiles.map(file => dirname(file) + '/**/*.proto');
 
-            const watcher = chokidar.watch(watchPatterns, {
+            const watcher = watch(watchPatterns, {
                 persistent: true,
                 ignoreInitial: true,
                 ignorePermissionErrors: true,
@@ -60,22 +70,22 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
             watcher.on('add', async filePath => {
                 if (filePath.endsWith('.proto')) {
                     console.log(chalk.green(`File added: ${filePath}`));
-                    await generateTypesForFile(filePath, options.output);
+                    await generateTypesForFile(filePath, options.output, typeOptions);
                 }
             });
 
             watcher.on('change', async filePath => {
                 if (filePath.endsWith('.proto')) {
                     console.log(chalk.green(`File changed: ${filePath}`));
-                    await generateTypesForFile(filePath, options.output);
+                    await generateTypesForFile(filePath, options.output, typeOptions);
                 }
             });
 
             watcher.on('unlink', filePath => {
                 if (filePath.endsWith('.proto')) {
                     const outputFile = getOutputPath(filePath, options.output);
-                    if (fs.existsSync(outputFile)) {
-                        fs.unlinkSync(outputFile);
+                    if (existsSync(outputFile)) {
+                        unlinkSync(outputFile);
                         console.log(chalk.yellow(`Removed generated file: ${outputFile}`));
                     }
                 }
@@ -91,21 +101,25 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
     }
 }
 
-async function generateTypesForFile(protoFile: string, outputDir: string): Promise<void> {
+async function generateTypesForFile(
+    protoFile: string,
+    outputDir: string,
+    typeOptions: TypeOptions,
+): Promise<void> {
     try {
         const outputFile = getOutputPath(protoFile, outputDir);
 
         // Create output directory if it doesn't exist
-        const outputDirPath = path.dirname(outputFile);
-        if (!fs.existsSync(outputDirPath)) {
-            fs.mkdirSync(outputDirPath, { recursive: true });
+        const outputDirPath = dirname(outputFile);
+        if (!existsSync(outputDirPath)) {
+            mkdirSync(outputDirPath, { recursive: true });
         }
 
         // Load the proto file
         const root = await protobuf.load(protoFile);
 
         // Generate TypeScript interfaces
-        const typeDefinitions = generateTypeDefinitions(root);
+        const typeDefinitions = generateTypeDefinitions(root, typeOptions);
 
         // Write to file
         writeTypesToFile(typeDefinitions, outputFile);
@@ -117,112 +131,11 @@ async function generateTypesForFile(protoFile: string, outputDir: string): Promi
 }
 
 function getOutputPath(protoFile: string, outputDir: string): string {
-    const baseName = path.basename(protoFile, '.proto');
-    return path.join(outputDir, `${baseName}.ts`);
-}
-
-function generateTypeDefinitions(root: protobuf.Root): string {
-    let typeDefinitions = '// This file is auto-generated by nestjs-grpc\n\n';
-    typeDefinitions += "import { Observable } from 'rxjs';\n\n";
-
-    // Process all nested types recursively
-    typeDefinitions = processNamespace(root, '', typeDefinitions);
-
-    return typeDefinitions;
-}
-
-function processNamespace(
-    namespace: protobuf.NamespaceBase,
-    prefix: string,
-    output: string,
-): string {
-    let result = output;
-
-    namespace.nestedArray.forEach(nested => {
-        const fullName = prefix ? `${prefix}.${nested.name}` : nested.name;
-
-        if (nested instanceof protobuf.Type) {
-            result += processMessageType(nested, fullName);
-        } else if (nested instanceof protobuf.Service) {
-            result += processServiceType(nested, fullName);
-        } else if (nested instanceof protobuf.Enum) {
-            result += processEnumType(nested, fullName);
-        } else if (nested instanceof protobuf.Namespace) {
-            result += processNamespace(nested, fullName, '');
-        }
-    });
-
-    return result;
-}
-
-function processMessageType(type: protobuf.Type, fullName: string): string {
-    let definition = `export interface ${type.name} {\n`;
-
-    type.fieldsArray.forEach(field => {
-        const fieldType = mapProtoTypeToTs(field.type, field.repeated);
-        const isOptional = !field.required;
-        definition += `  ${field.name}${isOptional ? '?' : ''}: ${fieldType};\n`;
-    });
-
-    definition += '}\n\n';
-    return definition;
-}
-
-function processServiceType(service: protobuf.Service, fullName: string): string {
-    // Generate the Client interface
-    let definition = `export interface ${service.name}Client {\n`;
-
-    service.methodsArray.forEach(method => {
-        // Convert method name to camelCase
-        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
-        const inputType = method.requestType.split('.').pop();
-        const outputType = method.responseType.split('.').pop();
-
-        definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
-    });
-
-    definition += '}\n\n';
-
-    return definition;
-}
-
-function processEnumType(enumType: protobuf.Enum, fullName: string): string {
-    let definition = `export enum ${enumType.name} {\n`;
-
-    // FIX: Make the enum values without numeric assignments
-    Object.keys(enumType.values).forEach(key => {
-        // Just list the enum values without the numeric assignment
-        definition += `  ${key},\n`;
-    });
-
-    definition += '}\n\n';
-    return definition;
-}
-
-function mapProtoTypeToTs(protoType: string, repeated: boolean): string {
-    const typeMap: { [key: string]: string } = {
-        string: 'string',
-        bool: 'boolean',
-        int32: 'number',
-        int64: 'string',
-        uint32: 'number',
-        uint64: 'string',
-        sint32: 'number',
-        sint64: 'string',
-        fixed32: 'number',
-        fixed64: 'string',
-        sfixed32: 'number',
-        sfixed64: 'string',
-        float: 'number',
-        double: 'number',
-        bytes: 'Uint8Array',
-    };
-
-    const mappedType = typeMap[protoType] || protoType;
-    return repeated ? `${mappedType}[]` : mappedType;
+    const baseName = basename(protoFile, '.proto');
+    return join(outputDir, `${baseName}.ts`);
 }
 
 function writeTypesToFile(content: string, outputPath: string): void {
-    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-    fs.writeFileSync(outputPath, content, 'utf8');
+    mkdirSync(dirname(outputPath), { recursive: true });
+    writeFileSync(outputPath, content, 'utf8');
 }
