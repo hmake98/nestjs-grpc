@@ -1,4 +1,5 @@
 import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
 import { GrpcClientFactory } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
 import { TypeGeneratorService } from './services/type-generator.service';
@@ -8,6 +9,8 @@ import {
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
 } from './interfaces/grpc-module-options.interface';
+import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
+import { GrpcMetadataExplorer } from './metadata/metadata.explorer';
 
 @Global()
 @Module({})
@@ -26,12 +29,17 @@ export class GrpcModule {
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
+            GrpcMetadataExplorer,
+            {
+                provide: APP_FILTER,
+                useClass: GrpcExceptionFilter,
+            },
         ];
 
         return {
             module: GrpcModule,
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService],
+            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer],
         };
     }
 
@@ -46,13 +54,18 @@ export class GrpcModule {
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
+            GrpcMetadataExplorer,
+            {
+                provide: APP_FILTER,
+                useClass: GrpcExceptionFilter,
+            },
         ];
 
         return {
             module: GrpcModule,
             imports: options.imports || [],
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService],
+            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer],
         };
     }
 
