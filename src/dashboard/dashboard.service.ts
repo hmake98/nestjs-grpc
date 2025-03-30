@@ -28,7 +28,6 @@ export interface GrpcConnection {
     status: 'connected' | 'disconnected' | 'error';
     established: Date;
     lastActivity: Date;
-    metadata?: Record<string, string>;
 }
 
 export interface LogEntry {
@@ -39,7 +38,6 @@ export interface LogEntry {
     context: string;
     service?: string;
     method?: string;
-    traceId?: string;
 }
 
 export interface StatsData {
@@ -50,7 +48,7 @@ export interface StatsData {
 }
 
 @Injectable()
-export class DashboardService implements OnModuleInit {
+export class GrpcDashboardService implements OnModuleInit {
     private services: GrpcServiceInfo[] = [];
     private connections: GrpcConnection[] = [];
     private logs: LogEntry[] = [];
@@ -303,7 +301,7 @@ export class DashboardService implements OnModuleInit {
         // Override logger methods to capture logs
         const createLogMethod = (level: 'error' | 'warn' | 'info' | 'debug' | 'verbose') => {
             return function (
-                this: DashboardService,
+                this: GrpcDashboardService,
                 message: string,
                 context?: string,
                 trace?: string,

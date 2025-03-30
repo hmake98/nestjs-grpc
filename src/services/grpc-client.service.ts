@@ -219,7 +219,6 @@ export class GrpcClientFactory implements OnModuleInit {
             certChain: options?.certChain || this.options.certChain,
             timeout: options?.timeout || 30000,
             channelOptions: options?.channelOptions,
-            credentials: options?.credentials,
         };
     }
 
@@ -252,7 +251,7 @@ export class GrpcClientFactory implements OnModuleInit {
         // Create gRPC client
         const client = new serviceConstructor(url, credentials, channelOptions);
 
-        // Promisify and add metadata handling
+        // Wrap client with promise and observable support
         return this.wrapClient(client, options);
     }
 
@@ -320,7 +319,8 @@ export class GrpcClientFactory implements OnModuleInit {
         options: GrpcClientOptions,
     ): (request: any, metadata?: grpc.Metadata) => Promise<any> {
         return (request: any, metadata?: grpc.Metadata): Promise<any> => {
-            const meta = this.createMetadata(metadata, options);
+            // Use provided metadata or create an empty one
+            const meta = metadata || new grpc.Metadata();
 
             return new Promise<any>((resolve, reject) => {
                 const deadline = this.getDeadline(options.timeout);
@@ -363,7 +363,8 @@ export class GrpcClientFactory implements OnModuleInit {
         options: GrpcClientOptions,
     ): (request: any, metadata?: grpc.Metadata) => Observable<any> {
         return (request: any, metadata?: grpc.Metadata): Observable<any> => {
-            const meta = this.createMetadata(metadata, options);
+            // Use provided metadata or create an empty one
+            const meta = metadata || new grpc.Metadata();
             this.logger.debug(`Calling streaming method ${methodName}`, 'GrpcClientFactory');
 
             return new Observable(observer => {
@@ -395,35 +396,6 @@ export class GrpcClientFactory implements OnModuleInit {
                 };
             });
         };
-    }
-
-    /**
-     * Creates metadata for a gRPC call
-     * @param metadata The user-provided metadata
-     * @param options The client options
-     * @returns The gRPC metadata
-     */
-    private createMetadata(metadata?: grpc.Metadata, options?: GrpcClientOptions): grpc.Metadata {
-        const meta = metadata || new grpc.Metadata();
-
-        // Add authentication if provided
-        if (options?.credentials) {
-            const { type, token, metadata: authMetadata } = options.credentials;
-
-            if (type === 'jwt' && token) {
-                this.logger.verbose('Adding JWT token to metadata', 'GrpcClientFactory');
-                meta.add('authorization', `Bearer ${token}`);
-            }
-
-            if (authMetadata) {
-                this.logger.verbose('Adding custom auth metadata', 'GrpcClientFactory');
-                Object.entries(authMetadata).forEach(([key, value]) => {
-                    meta.add(key, value);
-                });
-            }
-        }
-
-        return meta;
     }
 
     /**

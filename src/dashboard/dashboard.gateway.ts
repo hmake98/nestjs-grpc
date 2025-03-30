@@ -9,7 +9,7 @@ import {
     ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { DashboardService, LogEntry, GrpcConnection, StatsData } from './dashboard.service';
+import { GrpcDashboardService, LogEntry, GrpcConnection, StatsData } from './dashboard.service';
 import { Logger, Inject, OnModuleDestroy } from '@nestjs/common';
 
 @WebSocketGateway({
@@ -18,7 +18,7 @@ import { Logger, Inject, OnModuleDestroy } from '@nestjs/common';
         origin: '*',
     },
 })
-export class DashboardGateway
+export class GrpcDashboardGateway
     implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy
 {
     @WebSocketServer() server: Server;
@@ -29,7 +29,7 @@ export class DashboardGateway
     private clientCount = 0;
 
     constructor(
-        private readonly dashboardService: DashboardService,
+        private readonly dashboardService: GrpcDashboardService,
         @Inject('DASHBOARD_OPTIONS')
         private readonly options: { cors: { origin: string | string[] | boolean } },
     ) {}
