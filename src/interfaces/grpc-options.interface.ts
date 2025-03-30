@@ -1,4 +1,5 @@
 import { Options } from '@grpc/proto-loader';
+import { GrpcLoggerOptions } from './logger.interface';
 
 /**
  * Options for the gRPC module
@@ -53,4 +54,9 @@ export interface GrpcOptions {
      * Options for the proto loader
      */
     loaderOptions?: Options;
+
+    /**
+     * Logger options for the gRPC module
+     */
+    logger?: GrpcLoggerOptions;
 }

@@ -22,3 +22,6 @@ export { GrpcErrorCode } from './constants';
 // Utils
 export { loadProto, loadProtoWithProtobuf } from './utils/proto-utils';
 export { generateTypeDefinitions } from './utils/type-utils';
+
+// Dashboard
+export * from './dashboard';

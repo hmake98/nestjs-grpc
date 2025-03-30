@@ -106,7 +106,7 @@ export function getPackageByName(
             }
             return obj[part] as grpc.GrpcObject;
         }, packageDefinition);
-    } catch (error) {
+    } catch {
         return null;
     }
 }

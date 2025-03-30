@@ -11,7 +11,7 @@ try {
     // We'll use process.cwd() which is safe across module systems
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
     packageVersion = packageJson.version || '0.1.0';
-} catch (error) {
+} catch {
     // Fallback to env var if available
     packageVersion = process.env.npm_package_version || '0.1.0';
 }
@@ -34,6 +34,8 @@ program
     .option('--no-comments', 'Disable comments in generated files')
     .option('-f, --package-filter <package>', 'Filter by package name')
     .option('-r, --recursive', 'Recursively search directories for .proto files', true)
+    .option('-v, --verbose', 'Enable verbose logging')
+    .option('-s, --silent', 'Disable all logging except errors')
     .action(generateCommand);
 
 program.parse(process.argv);

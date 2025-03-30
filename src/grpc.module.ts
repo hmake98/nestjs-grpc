@@ -3,7 +3,8 @@ import { APP_FILTER } from '@nestjs/core';
 import { GrpcClientFactory } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
 import { TypeGeneratorService } from './services/type-generator.service';
-import { GRPC_OPTIONS } from './constants';
+import { GrpcLoggerService } from './services/logger.service';
+import { GRPC_LOGGER, GRPC_OPTIONS } from './constants';
 import { GrpcOptions } from './interfaces/grpc-options.interface';
 import {
     GrpcModuleAsyncOptions,
@@ -11,6 +12,7 @@ import {
 } from './interfaces/grpc-module-options.interface';
 import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 import { GrpcMetadataExplorer } from './metadata/metadata.explorer';
+import { GrpcLogger, LogLevel } from './interfaces/logger.interface';
 
 @Global()
 @Module({})
@@ -21,11 +23,14 @@ export class GrpcModule {
      * @returns The dynamic module
      */
     static forRoot(options: GrpcOptions): DynamicModule {
+        const loggerProvider = this.createLoggerProvider(options);
+
         const providers: Provider[] = [
             {
                 provide: GRPC_OPTIONS,
                 useValue: options,
             },
+            loggerProvider,
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
@@ -39,7 +44,7 @@ export class GrpcModule {
         return {
             module: GrpcModule,
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer],
+            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer, GRPC_LOGGER],
         };
     }
 
@@ -51,6 +56,13 @@ export class GrpcModule {
     static forRootAsync(options: GrpcModuleAsyncOptions): DynamicModule {
         const providers: Provider[] = [
             ...this.createAsyncProviders(options),
+            {
+                provide: GRPC_LOGGER,
+                useFactory: (grpcOptions: GrpcOptions) => {
+                    return this.createLogger(grpcOptions);
+                },
+                inject: [GRPC_OPTIONS],
+            },
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
@@ -65,7 +77,7 @@ export class GrpcModule {
             module: GrpcModule,
             imports: options.imports || [],
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer],
+            exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer, GRPC_LOGGER],
         };
     }
 
@@ -79,13 +91,18 @@ export class GrpcModule {
             return [this.createAsyncOptionsProvider(options)];
         }
 
-        return [
-            this.createAsyncOptionsProvider(options),
-            {
-                provide: options.useClass,
-                useClass: options.useClass,
-            },
-        ];
+        // Only add this provider if useClass is defined
+        if (options.useClass) {
+            return [
+                this.createAsyncOptionsProvider(options),
+                {
+                    provide: options.useClass,
+                    useClass: options.useClass,
+                },
+            ];
+        }
+
+        return [this.createAsyncOptionsProvider(options)];
     }
 
     /**
@@ -102,11 +119,53 @@ export class GrpcModule {
             };
         }
 
+        // Handle the case when neither useExisting nor useClass is defined
+        const injectToken = options.useExisting || options.useClass;
+
+        if (!injectToken) {
+            throw new Error(
+                'Invalid configuration. If "useFactory" is not used, you must provide "useExisting" or "useClass".',
+            );
+        }
+
         return {
             provide: GRPC_OPTIONS,
             useFactory: async (optionsFactory: GrpcOptionsFactory) =>
                 await optionsFactory.createGrpcOptions(),
-            inject: [options.useExisting || options.useClass],
+            inject: [injectToken],
         };
+    }
+
+    /**
+     * Creates a logger provider
+     * @param options The gRPC options
+     * @returns The logger provider
+     */
+    private static createLoggerProvider(options: GrpcOptions): Provider {
+        return {
+            provide: GRPC_LOGGER,
+            useValue: this.createLogger(options),
+        };
+    }
+
+    /**
+     * Creates a logger instance
+     * @param options The gRPC options
+     * @returns A logger instance
+     */
+    private static createLogger(options: GrpcOptions): GrpcLogger {
+        const loggerOptions = options.logger || {};
+
+        // If a custom logger is provided, use it
+        if (loggerOptions.customLogger) {
+            return loggerOptions.customLogger;
+        }
+
+        // Otherwise, create a default logger
+        return new GrpcLoggerService('GrpcModule', {
+            level: loggerOptions.level || LogLevel.INFO,
+            prettyPrint: loggerOptions.prettyPrint !== false,
+            disable: loggerOptions.disable || false,
+        });
     }
 }

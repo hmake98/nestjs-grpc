@@ -1,10 +1,11 @@
 import { existsSync, statSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { dirname, basename, join } from 'path';
 import { globSync } from 'glob';
-import chalk from 'chalk';
 import * as protobuf from 'protobufjs';
 import { watch } from 'chokidar';
 import { generateTypeDefinitions, TypeOptions } from 'src/utils';
+import { GrpcLoggerService } from '../../services/logger.service';
+import { LogLevel } from '../../interfaces/logger.interface';
 
 interface GenerateCommandOptions {
     proto: string;
@@ -14,9 +15,24 @@ interface GenerateCommandOptions {
     classes?: boolean;
     comments?: boolean;
     packageFilter?: string;
+    verbose?: boolean;
+    silent?: boolean;
 }
 
 export async function generateCommand(options: GenerateCommandOptions): Promise<void> {
+    // Configure logger based on command line options
+    const logLevel = options.verbose
+        ? LogLevel.DEBUG
+        : options.silent
+          ? LogLevel.ERROR
+          : LogLevel.INFO;
+
+    const logger = new GrpcLoggerService('CliGenerator', {
+        level: logLevel,
+        prettyPrint: true,
+        disable: options.silent === true,
+    });
+
     try {
         // Check if proto is a directory without glob pattern
         const isDirectory = existsSync(options.proto) && statSync(options.proto).isDirectory();
@@ -28,17 +44,17 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
                 : `${options.proto}/`;
 
             options.proto = `${normalizedPath}**/*.proto`;
-            console.log(chalk.blue(`Directory detected, using pattern: ${options.proto}`));
+            logger.info(`Directory detected, using pattern: ${options.proto}`);
         }
 
         const protoFiles = globSync(options.proto, { ignore: 'node_modules/**' });
 
         if (protoFiles.length === 0) {
-            console.log(chalk.yellow(`No proto files found matching pattern: ${options.proto}`));
+            logger.warn(`No proto files found matching pattern: ${options.proto}`);
             return;
         }
 
-        console.log(chalk.blue(`Found ${protoFiles.length} proto file(s)`));
+        logger.info(`Found ${protoFiles.length} proto file(s)`);
 
         // Create type generation options from command options
         const typeOptions: TypeOptions = {
@@ -49,12 +65,12 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         // Initial generation
         for (const protoFile of protoFiles) {
-            await generateTypesForFile(protoFile, options.output, typeOptions);
+            await generateTypesForFile(protoFile, options.output, typeOptions, logger);
         }
 
         // Setup watch mode if requested
         if (options.watch) {
-            console.log(chalk.blue('\nWatching for changes...'));
+            logger.info('\nWatching for changes...');
 
             const watchPatterns = isDirectory
                 ? options.proto
@@ -69,15 +85,15 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
             watcher.on('add', async filePath => {
                 if (filePath.endsWith('.proto')) {
-                    console.log(chalk.green(`File added: ${filePath}`));
-                    await generateTypesForFile(filePath, options.output, typeOptions);
+                    logger.info(`File added: ${filePath}`);
+                    await generateTypesForFile(filePath, options.output, typeOptions, logger);
                 }
             });
 
             watcher.on('change', async filePath => {
                 if (filePath.endsWith('.proto')) {
-                    console.log(chalk.green(`File changed: ${filePath}`));
-                    await generateTypesForFile(filePath, options.output, typeOptions);
+                    logger.info(`File changed: ${filePath}`);
+                    await generateTypesForFile(filePath, options.output, typeOptions, logger);
                 }
             });
 
@@ -86,17 +102,17 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
                     const outputFile = getOutputPath(filePath, options.output);
                     if (existsSync(outputFile)) {
                         unlinkSync(outputFile);
-                        console.log(chalk.yellow(`Removed generated file: ${outputFile}`));
+                        logger.info(`Removed generated file: ${outputFile}`);
                     }
                 }
             });
 
-            console.log(chalk.blue('Press Ctrl+C to stop watching'));
+            logger.info('Press Ctrl+C to stop watching');
             // Keep process alive
             process.stdin.resume();
         }
     } catch (error) {
-        console.error(chalk.red('Error generating types:'), error);
+        logger.error('Error generating types:', 'CliGenerator', error.stack);
         process.exit(1);
     }
 }
@@ -105,6 +121,7 @@ async function generateTypesForFile(
     protoFile: string,
     outputDir: string,
     typeOptions: TypeOptions,
+    logger: GrpcLoggerService,
 ): Promise<void> {
     try {
         const outputFile = getOutputPath(protoFile, outputDir);
@@ -112,21 +129,24 @@ async function generateTypesForFile(
         // Create output directory if it doesn't exist
         const outputDirPath = dirname(outputFile);
         if (!existsSync(outputDirPath)) {
+            logger.debug(`Creating directory: ${outputDirPath}`);
             mkdirSync(outputDirPath, { recursive: true });
         }
 
         // Load the proto file
+        logger.debug(`Loading proto file: ${protoFile}`);
         const root = await protobuf.load(protoFile);
 
         // Generate TypeScript interfaces
+        logger.debug(`Generating types for: ${protoFile}`);
         const typeDefinitions = generateTypeDefinitions(root, typeOptions);
 
         // Write to file
-        writeTypesToFile(typeDefinitions, outputFile);
+        writeTypesToFile(typeDefinitions, outputFile, logger);
 
-        console.log(chalk.green(`Generated types for ${protoFile} → ${outputFile}`));
+        logger.info(`Generated types for ${protoFile} → ${outputFile}`);
     } catch (error) {
-        console.error(chalk.red(`Error processing ${protoFile}:`), error);
+        logger.error(`Error processing ${protoFile}:`, 'CliGenerator', error.stack);
     }
 }
 
@@ -135,7 +155,13 @@ function getOutputPath(protoFile: string, outputDir: string): string {
     return join(outputDir, `${baseName}.ts`);
 }
 
-function writeTypesToFile(content: string, outputPath: string): void {
-    mkdirSync(dirname(outputPath), { recursive: true });
-    writeFileSync(outputPath, content, 'utf8');
+function writeTypesToFile(content: string, outputPath: string, logger: GrpcLoggerService): void {
+    try {
+        mkdirSync(dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, content, 'utf8');
+        logger.debug(`Successfully wrote types to: ${outputPath}`);
+    } catch (error) {
+        logger.error(`Failed to write types to ${outputPath}:`, 'CliGenerator', error.stack);
+        throw error;
+    }
 }

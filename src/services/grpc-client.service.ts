@@ -1,11 +1,12 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import * as grpc from '@grpc/grpc-js';
 import { Observable } from 'rxjs';
 import { ProtoLoaderService } from './proto-loader.service';
-import { GRPC_OPTIONS } from '../constants';
+import { GRPC_OPTIONS, GRPC_LOGGER } from '../constants';
 import { GrpcOptions } from '../interfaces/grpc-options.interface';
 import { GrpcClientOptions } from '../interfaces/grpc-client-options.interface';
+import { GrpcLogger } from '../interfaces/logger.interface';
 import {
     createClientCredentials,
     createChannelOptions,
@@ -14,14 +15,14 @@ import {
 
 @Injectable()
 export class GrpcClientFactory implements OnModuleInit {
-    private readonly logger = new Logger(GrpcClientFactory.name);
-    private clients: Map<string, any> = new Map();
-    private protoServices: any;
-
     constructor(
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
+        @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger,
         private readonly protoLoaderService: ProtoLoaderService,
     ) {}
+
+    private clients: Map<string, any> = new Map();
+    private protoServices: any;
 
     /**
      * Initialize the factory on module initialization
@@ -29,9 +30,13 @@ export class GrpcClientFactory implements OnModuleInit {
     async onModuleInit(): Promise<void> {
         try {
             this.protoServices = await this.protoLoaderService.load();
-            this.logger.log('gRPC services loaded successfully');
+            this.logger.info('gRPC services loaded successfully');
         } catch (error) {
-            this.logger.error(`Failed to load gRPC services: ${error.message}`);
+            this.logger.error(
+                `Failed to load gRPC services: ${error.message}`,
+                'GrpcClientFactory',
+                error.stack,
+            );
             throw error;
         }
     }
@@ -46,6 +51,7 @@ export class GrpcClientFactory implements OnModuleInit {
         const clientKey = this.getClientKey(serviceName, options?.url);
 
         if (this.clients.has(clientKey)) {
+            this.logger.debug(`Reusing existing client for ${serviceName}`);
             return this.clients.get(clientKey);
         }
 
@@ -55,6 +61,7 @@ export class GrpcClientFactory implements OnModuleInit {
 
         // Store the client for reuse
         this.clients.set(clientKey, client);
+        this.logger.debug(`Created new client for ${serviceName} at ${clientOptions.url}`);
 
         return client as T;
     }
@@ -76,11 +83,13 @@ export class GrpcClientFactory implements OnModuleInit {
      */
     private getServiceConstructor(serviceName: string): any {
         if (!this.protoServices) {
+            this.logger.error('gRPC services not loaded yet', 'GrpcClientFactory');
             throw new Error('gRPC services not loaded yet');
         }
 
         const serviceConstructor = this.protoServices[serviceName];
         if (!serviceConstructor) {
+            this.logger.error(`Service ${serviceName} not found`, 'GrpcClientFactory');
             throw new Error(`Service ${serviceName} not found`);
         }
 
@@ -94,7 +103,7 @@ export class GrpcClientFactory implements OnModuleInit {
      */
     private mergeClientOptions(options?: Partial<GrpcClientOptions>): GrpcClientOptions {
         return {
-            service: options?.service,
+            service: options?.service || '',
             package: options?.package || this.options.package,
             protoPath: options?.protoPath || this.options.protoPath,
             url: options?.url || this.options.url || 'localhost:50051',
@@ -131,6 +140,11 @@ export class GrpcClientFactory implements OnModuleInit {
             options.channelOptions,
         );
 
+        this.logger.verbose(
+            `Creating gRPC client for ${url} with secure=${secure}`,
+            'GrpcClientFactory',
+        );
+
         // Create gRPC client
         const client = new serviceConstructor(url, credentials, channelOptions);
 
@@ -161,9 +175,11 @@ export class GrpcClientFactory implements OnModuleInit {
             if (isStreamingMethod) {
                 // Streaming method - return an Observable
                 wrappedClient[methodName] = this.wrapStreamingMethod(client, methodName, options);
+                this.logger.verbose(`Wrapped streaming method: ${methodName}`, 'GrpcClientFactory');
             } else {
                 // Unary method - return a Promise
                 wrappedClient[methodName] = this.wrapUnaryMethod(client, methodName, options);
+                this.logger.verbose(`Wrapped unary method: ${methodName}`, 'GrpcClientFactory');
             }
         }
 
@@ -204,6 +220,7 @@ export class GrpcClientFactory implements OnModuleInit {
 
             return new Promise<any>((resolve, reject) => {
                 const deadline = this.getDeadline(options.timeout);
+                this.logger.debug(`Calling unary method ${methodName}`, 'GrpcClientFactory');
 
                 client[methodName](
                     request,
@@ -211,8 +228,16 @@ export class GrpcClientFactory implements OnModuleInit {
                     { deadline },
                     (error: Error | null, response: any) => {
                         if (error) {
+                            this.logger.error(
+                                `Error calling ${methodName}: ${error.message}`,
+                                'GrpcClientFactory',
+                            );
                             reject(error);
                         } else {
+                            this.logger.debug(
+                                `Successfully called ${methodName}`,
+                                'GrpcClientFactory',
+                            );
                             resolve(response);
                         }
                     },
@@ -235,25 +260,33 @@ export class GrpcClientFactory implements OnModuleInit {
     ): (request: any, metadata?: grpc.Metadata) => Observable<any> {
         return (request: any, metadata?: grpc.Metadata): Observable<any> => {
             const meta = this.createMetadata(metadata, options);
+            this.logger.debug(`Calling streaming method ${methodName}`, 'GrpcClientFactory');
 
             return new Observable(observer => {
                 const deadline = this.getDeadline(options.timeout);
                 const call = client[methodName](request, meta, { deadline });
 
                 call.on('data', (data: any) => {
+                    this.logger.verbose(`Received data from ${methodName}`, 'GrpcClientFactory');
                     observer.next(data);
                 });
 
                 call.on('end', () => {
+                    this.logger.debug(`Stream ended for ${methodName}`, 'GrpcClientFactory');
                     observer.complete();
                 });
 
                 call.on('error', (error: Error) => {
+                    this.logger.error(
+                        `Stream error in ${methodName}: ${error.message}`,
+                        'GrpcClientFactory',
+                    );
                     observer.error(error);
                 });
 
                 // Return a cleanup function
                 return () => {
+                    this.logger.debug(`Cancelling stream for ${methodName}`, 'GrpcClientFactory');
                     call.cancel();
                 };
             });
@@ -274,10 +307,12 @@ export class GrpcClientFactory implements OnModuleInit {
             const { type, token, metadata: authMetadata } = options.credentials;
 
             if (type === 'jwt' && token) {
+                this.logger.verbose('Adding JWT token to metadata', 'GrpcClientFactory');
                 meta.add('authorization', `Bearer ${token}`);
             }
 
             if (authMetadata) {
+                this.logger.verbose('Adding custom auth metadata', 'GrpcClientFactory');
                 Object.entries(authMetadata).forEach(([key, value]) => {
                     meta.add(key, value);
                 });
