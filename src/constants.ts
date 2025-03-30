@@ -4,6 +4,11 @@
 export const GRPC_OPTIONS = 'GRPC_OPTIONS';
 
 /**
+ * Token for gRPC logger injection
+ */
+export const GRPC_LOGGER = 'GRPC_LOGGER';
+
+/**
  * Token for gRPC metadata parser injection
  */
 export const GRPC_METADATA_PARSER = 'GRPC_METADATA_PARSER';

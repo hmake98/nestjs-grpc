@@ -1,16 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Inject } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GRPC_OPTIONS } from '../constants';
+import { GRPC_OPTIONS, GRPC_LOGGER } from '../constants';
 import { GrpcOptions } from '../interfaces/grpc-options.interface';
+import { GrpcLogger } from '../interfaces/logger.interface';
 import { loadProtoWithProtobuf, generateTypeDefinitions, TypeOptions } from '../utils';
 
 @Injectable()
 export class TypeGeneratorService {
-    private readonly logger = new Logger(TypeGeneratorService.name);
-
-    constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {}
+    constructor(
+        @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
+        @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger,
+    ) {}
 
     /**
      * Generates TypeScript type definitions from the proto file
@@ -22,12 +24,17 @@ export class TypeGeneratorService {
         const { protoPath } = this.options;
 
         try {
-            this.logger.log(`Generating types from ${protoPath} to ${outputPath}`);
+            this.logger.info(
+                `Generating types from ${protoPath} to ${outputPath}`,
+                'TypeGeneratorService',
+            );
 
             // Load the proto file
+            this.logger.debug('Loading proto file with protobufjs', 'TypeGeneratorService');
             const root = await loadProtoWithProtobuf(protoPath);
 
             // Generate TypeScript interfaces
+            this.logger.debug('Generating TypeScript definitions', 'TypeGeneratorService');
             const typeDefinitions = generateTypeDefinitions(root, {
                 includeComments: true,
                 ...options,
@@ -36,9 +43,16 @@ export class TypeGeneratorService {
             // Write to file
             this.writeTypesToFile(typeDefinitions, outputPath);
 
-            this.logger.log(`Successfully generated types to ${outputPath}`);
+            this.logger.info(
+                `Successfully generated types to ${outputPath}`,
+                'TypeGeneratorService',
+            );
         } catch (error) {
-            this.logger.error(`Failed to generate types: ${error.message}`);
+            this.logger.error(
+                `Failed to generate types: ${error.message}`,
+                'TypeGeneratorService',
+                error.stack,
+            );
             throw new Error(`Failed to generate types: ${error.message}`);
         }
     }
@@ -54,11 +68,21 @@ export class TypeGeneratorService {
 
             // Create directory if it doesn't exist
             if (!fs.existsSync(outputDir)) {
+                this.logger.debug(
+                    `Creating output directory: ${outputDir}`,
+                    'TypeGeneratorService',
+                );
                 fs.mkdirSync(outputDir, { recursive: true });
             }
 
+            this.logger.debug(`Writing types to file: ${outputPath}`, 'TypeGeneratorService');
             fs.writeFileSync(outputPath, content, 'utf8');
         } catch (error) {
+            this.logger.error(
+                `Failed to write types to file: ${error.message}`,
+                'TypeGeneratorService',
+                error.stack,
+            );
             throw new Error(`Failed to write types to file: ${error.message}`);
         }
     }
@@ -74,23 +98,27 @@ export class TypeGeneratorService {
         // Generate types initially
         await this.generateTypes(outputPath, options);
 
-        this.logger.log(`Watching ${protoPath} for changes...`);
+        this.logger.info(`Watching ${protoPath} for changes...`, 'TypeGeneratorService');
 
         // Set up file watcher
         const watcher = fs.watch(protoPath, async () => {
-            this.logger.log(`Proto file changed, regenerating types...`);
+            this.logger.info(`Proto file changed, regenerating types...`, 'TypeGeneratorService');
             try {
                 await this.generateTypes(outputPath, options);
-                this.logger.log(`Types regenerated successfully`);
+                this.logger.info(`Types regenerated successfully`, 'TypeGeneratorService');
             } catch (error) {
-                this.logger.error(`Error regenerating types: ${error.message}`);
+                this.logger.error(
+                    `Error regenerating types: ${error.message}`,
+                    'TypeGeneratorService',
+                    error.stack,
+                );
             }
         });
 
         // Return a function to stop watching
         return () => {
             watcher.close();
-            this.logger.log(`Stopped watching proto file`);
+            this.logger.info(`Stopped watching proto file`, 'TypeGeneratorService');
         };
     }
 }

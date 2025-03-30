@@ -12,6 +12,7 @@ A NestJS package for type-safe gRPC communication between microservices.
 - **Exception Handling**: Proper error handling and status codes for gRPC
 - **Metadata Handling**: Easy access to gRPC metadata with NestJS decorators
 - **Authentication Support**: Simplified token extraction and validation
+- **Configurable Logging**: Flexible logging system with customizable log levels and outputs
 
 ## Installation
 
@@ -97,13 +98,18 @@ export interface UserServiceClient {
 import { Module } from '@nestjs/common';
 import { GrpcModule } from 'nestjs-grpc';
 import { join } from 'path';
+import { LogLevel } from 'nestjs-grpc';
 
 @Module({
   imports: [
     GrpcModule.forRoot({
       protoPath: join(__dirname, '../protos/user.proto'),
       package: 'user',
-      url: 'localhost:50051'
+      url: 'localhost:50051',
+      logger: {
+        level: LogLevel.INFO,  // Configure log level
+        prettyPrint: true,     // Enable pretty printing (colored output)
+      }
     }),
   ],
 })
@@ -114,8 +120,8 @@ export class AppModule {}
 
 ```typescript
 // user.service.ts
-import { Injectable } from '@nestjs/common';
-import { GrpcService, GrpcMethod, GrpcMetadata, GrpcAuthToken } from 'nestjs-grpc';
+import { Injectable, Inject } from '@nestjs/common';
+import { GrpcService, GrpcMethod, GrpcMetadata, GrpcAuthToken, GrpcLogger, GRPC_LOGGER } from 'nestjs-grpc';
 import { Observable, of } from 'rxjs';
 import { Metadata } from '@grpc/grpc-js';
 import { 
@@ -131,17 +137,23 @@ import {
 export class UserService {
   private users: User[] = [];
 
+  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
+
   @GrpcMethod('getUser')
   getUser(
     request: GetUserRequest,
     @GrpcMetadata() metadata: Metadata
   ): Observable<User> {
-    console.log('Client version:', metadata.get('client-version'));
+    this.logger.debug(`GetUser request for ID: ${request.id}`, 'UserService');
+    this.logger.verbose(`Client version: ${metadata.get('client-version')}`, 'UserService');
     
     const user = this.users.find(u => u.id === request.id);
     if (!user) {
+      this.logger.warn(`User not found: ${request.id}`, 'UserService');
       throw new Error('User not found');
     }
+    
+    this.logger.info(`User retrieved: ${user.id}`, 'UserService');
     return of(user);
   }
 
@@ -151,7 +163,7 @@ export class UserService {
     @GrpcAuthToken() token: string
   ): Observable<User> {
     // Use the extracted auth token
-    console.log('Auth token:', token);
+    this.logger.debug(`Auth token: ${token}`, 'UserService');
     
     const user: User = {
       id: Date.now().toString(),
@@ -160,6 +172,7 @@ export class UserService {
     };
     
     this.users.push(user);
+    this.logger.info(`User created: ${user.id}`, 'UserService');
     return of(user);
   }
 
@@ -168,6 +181,8 @@ export class UserService {
     const { page = 1, limit = 10 } = request;
     const startIdx = (page - 1) * limit;
     const endIdx = startIdx + limit;
+    
+    this.logger.debug(`ListUsers request: page=${page}, limit=${limit}`, 'UserService');
     
     return of({
       users: this.users.slice(startIdx, endIdx),
@@ -181,8 +196,8 @@ export class UserService {
 
 ```typescript
 // client.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { GrpcClientFactory, MetadataUtils } from 'nestjs-grpc';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { GrpcClientFactory, MetadataUtils, GRPC_LOGGER, GrpcLogger } from 'nestjs-grpc';
 import { Observable } from 'rxjs';
 import { UserServiceClient, User, GetUserRequest } from './generated/user';
 
@@ -190,13 +205,19 @@ import { UserServiceClient, User, GetUserRequest } from './generated/user';
 export class ClientService implements OnModuleInit {
   private userClient: UserServiceClient;
 
-  constructor(private grpcClientFactory: GrpcClientFactory) {}
+  constructor(
+    private grpcClientFactory: GrpcClientFactory,
+    @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger
+  ) {}
 
   onModuleInit() {
     this.userClient = this.grpcClientFactory.create<UserServiceClient>('UserService');
+    this.logger.info('gRPC client initialized', 'ClientService');
   }
 
   getUser(id: string): Observable<User> {
+    this.logger.debug(`Fetching user with ID: ${id}`, 'ClientService');
+    
     // Create metadata with client version
     const metadata = MetadataUtils.fromObject({
       'client-version': '1.0.0'
@@ -206,6 +227,8 @@ export class ClientService implements OnModuleInit {
   }
   
   getUserWithAuth(id: string, token: string): Observable<User> {
+    this.logger.debug(`Fetching user with ID: ${id} (authenticated)`, 'ClientService');
+    
     // Create metadata with authentication token
     const metadata = MetadataUtils.withAuthToken(token);
     
@@ -223,7 +246,7 @@ You can use `forRootAsync` for dynamic module configuration:
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { GrpcModule } from 'nestjs-grpc';
+import { GrpcModule, LogLevel } from 'nestjs-grpc';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
@@ -236,6 +259,10 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         protoPath: configService.get('GRPC_PROTO_PATH'),
         package: configService.get('GRPC_PACKAGE'),
         url: configService.get('GRPC_URL'),
+        logger: {
+          level: configService.get('LOG_LEVEL') === 'debug' ? LogLevel.DEBUG : LogLevel.INFO,
+          prettyPrint: configService.get('LOG_PRETTY_PRINT') === 'true',
+        }
       }),
     }),
   ],
@@ -257,6 +284,9 @@ GrpcModule.forRoot({
   rootCerts: readFileSync(join(__dirname, '../certs/ca.pem')),
   privateKey: readFileSync(join(__dirname, '../certs/server-key.pem')),
   certChain: readFileSync(join(__dirname, '../certs/server-cert.pem')),
+  logger: {
+    level: LogLevel.INFO,
+  }
 })
 ```
 
@@ -270,10 +300,13 @@ import { Observable, throwError } from 'rxjs';
 
 @GrpcService('UserService')
 export class UserService {
+  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
+
   @GrpcMethod('getUser')
   getUser(request: GetUserRequest): Observable<User> {
     const user = this.users.find(u => u.id === request.id);
     if (!user) {
+      this.logger.warn(`User not found: ${request.id}`, 'UserService');
       throw GrpcException.notFound(`User with ID ${request.id} not found`);
     }
     return of(user);
@@ -282,6 +315,109 @@ export class UserService {
 ```
 
 The exception filter is automatically registered when importing the GrpcModule.
+
+### Logging Configuration
+
+#### Configure Log Levels
+
+```typescript
+import { GrpcModule, LogLevel } from 'nestjs-grpc';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      // ... other options
+      logger: {
+        level: LogLevel.DEBUG,  // Set log level: ERROR, WARN, INFO, DEBUG, VERBOSE
+        prettyPrint: true,      // Enable colored output
+        disable: false,         // Completely disable logging
+      }
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+#### Using a Custom Logger
+
+You can implement your own logger by implementing the `GrpcLogger` interface:
+
+```typescript
+import { GrpcLogger, LogLevel } from 'nestjs-grpc';
+
+export class CustomLogger implements GrpcLogger {
+  private level: LogLevel = LogLevel.INFO;
+  
+  constructor(private context: string = 'App') {}
+  
+  error(message: string, context?: string, trace?: string): void {
+    if (this.level < LogLevel.ERROR) return;
+    console.error(`[ERROR] [${context || this.context}] ${message}`);
+    if (trace) console.error(trace);
+  }
+  
+  warn(message: string, context?: string): void {
+    if (this.level < LogLevel.WARN) return;
+    console.warn(`[WARN] [${context || this.context}] ${message}`);
+  }
+  
+  info(message: string, context?: string): void {
+    if (this.level < LogLevel.INFO) return;
+    console.info(`[INFO] [${context || this.context}] ${message}`);
+  }
+  
+  debug(message: string, context?: string): void {
+    if (this.level < LogLevel.DEBUG) return;
+    console.debug(`[DEBUG] [${context || this.context}] ${message}`);
+  }
+  
+  verbose(message: string, context?: string): void {
+    if (this.level < LogLevel.VERBOSE) return;
+    console.log(`[VERBOSE] [${context || this.context}] ${message}`);
+  }
+  
+  setLogLevel(level: LogLevel): void {
+    this.level = level;
+  }
+}
+
+// Use the custom logger
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      // ... other options
+      logger: {
+        customLogger: new CustomLogger('GrpcApp'),
+        level: LogLevel.DEBUG,
+      }
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+#### Accessing the Logger in Your Services
+
+The logger can be injected into any service using the `GRPC_LOGGER` token:
+
+```typescript
+import { Injectable, Inject } from '@nestjs/common';
+import { GRPC_LOGGER, GrpcLogger } from 'nestjs-grpc';
+
+@Injectable()
+export class AppService {
+  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {
+    // Use logger in your service
+    this.logger.info('AppService initialized');
+  }
+  
+  doSomething(): void {
+    this.logger.debug('Doing something...', 'AppService');
+    // ... implementation
+    this.logger.info('Operation completed successfully', 'AppService');
+  }
+}
+```
 
 ### Type Generation Options
 
@@ -299,6 +435,12 @@ npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --
 
 # Watch mode for regenerating on changes
 npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --watch
+
+# Enable verbose logging
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --verbose
+
+# Disable all logging except errors
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --silent
 ```
 
 ### Working with Metadata
@@ -310,13 +452,15 @@ Extract metadata in service methods:
 ```typescript
 @GrpcService('UserService')
 export class UserService {
+  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
+
   @GrpcMethod('getUser')
   getUser(
     request: GetUserRequest,
     @GrpcMetadata() metadata: Metadata  // Get full metadata object
   ): Observable<User> {
     // Access all metadata
-    console.log('Client version:', metadata.get('client-version'));
+    this.logger.debug(`Client version: ${metadata.get('client-version')}`, 'UserService');
     // ...
   }
   
@@ -326,7 +470,7 @@ export class UserService {
     @GrpcMetadata('client-version') version: string  // Get specific metadata value
   ): Observable<User> {
     // Access specific metadata value directly
-    console.log('Client version:', version);
+    this.logger.debug(`Client version: ${version}`, 'UserService');
     // ...
   }
   
@@ -336,7 +480,7 @@ export class UserService {
     @GrpcAuthToken() token: string  // Extract auth token
   ): Observable<Empty> {
     // Validate token
-    console.log('Auth token:', token);
+    this.logger.debug(`Auth token: ${token}`, 'UserService');
     // ...
   }
 }
@@ -385,6 +529,8 @@ Generate options:
   --no-comments                Disable comments in generated files
   -f, --package-filter <name>  Filter by package name
   -r, --recursive              Recursively search directories for .proto files (default: true)
+  -v, --verbose                Enable verbose logging
+  -s, --silent                 Disable all logging except errors
 ```
 
 ## API Reference
@@ -407,6 +553,14 @@ Generate options:
 - `TypeGeneratorService`: Service for generating TypeScript interfaces
 - `ProtoLoaderService`: Service for loading protobuf definitions
 - `GrpcMetadataExplorer`: Service for exploring metadata usage in controllers
+- `GrpcLoggerService`: Service for logging with configurable log levels
+
+### Logging
+
+- `LogLevel`: Enum for log levels (ERROR, WARN, INFO, DEBUG, VERBOSE)
+- `GrpcLogger`: Interface for implementing custom loggers
+- `GRPC_LOGGER`: Injection token for the logger
+- `GrpcLoggerOptions`: Configuration options for the logger
 
 ### Exceptions
 

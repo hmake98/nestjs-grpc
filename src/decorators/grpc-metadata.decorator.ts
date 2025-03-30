@@ -56,6 +56,7 @@ export function registerMetadataParam(
 // Manual parameter decorator for registering metadata params
 export function GrpcMetadataParam(metadataKey?: string): ParameterDecorator {
     return (target, key, index) => {
+        if (key === undefined) return;
         registerMetadataParam(target, key, index, metadataKey);
     };
 }
