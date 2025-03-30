@@ -44,6 +44,11 @@ export const DEFAULT_KEEPALIVE_TIMEOUT_MS = 20000;
 export const DEFAULT_MAX_CONCURRENT_STREAMS = 100;
 
 /**
+ * Default gRPC max retry attempts
+ */
+export const GRPC_METADATA_PARAM = 'grpc:metadata_param';
+
+/**
  * Error codes for gRPC
  */
 export enum GrpcErrorCode {

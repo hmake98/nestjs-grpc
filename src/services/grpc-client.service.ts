@@ -31,6 +31,17 @@ export class GrpcClientFactory implements OnModuleInit {
         try {
             this.protoServices = await this.protoLoaderService.load();
             this.logger.info('gRPC services loaded successfully');
+
+            // Log available services for debugging
+            if (this.protoServices) {
+                const serviceNames = Object.keys(this.protoServices).filter(
+                    key => typeof this.protoServices[key] === 'function',
+                );
+                this.logger.debug(
+                    `Available services: ${serviceNames.join(', ')}`,
+                    'GrpcClientFactory',
+                );
+            }
         } catch (error) {
             this.logger.error(
                 `Failed to load gRPC services: ${error.message}`,
@@ -78,7 +89,7 @@ export class GrpcClientFactory implements OnModuleInit {
 
     /**
      * Gets the service constructor
-     * @param serviceName The service name
+     * @param serviceName The service name (can include package prefix)
      * @returns The service constructor
      */
     private getServiceConstructor(serviceName: string): any {
@@ -87,13 +98,106 @@ export class GrpcClientFactory implements OnModuleInit {
             throw new Error('gRPC services not loaded yet');
         }
 
-        const serviceConstructor = this.protoServices[serviceName];
+        // Try to get the service directly
+        let serviceConstructor = this.protoServices[serviceName];
+
+        // If not found, handle potential package prefix
+        if (!serviceConstructor && serviceName.includes('.')) {
+            // Service name might include a package prefix (e.g., 'user.UserService')
+            // Try to navigate through the package structure
+            const parts = serviceName.split('.');
+            let current = this.protoServices;
+
+            // Navigate through each part of the path
+            for (const part of parts) {
+                if (!current[part]) {
+                    break;
+                }
+                current = current[part];
+            }
+
+            // If we found a constructor at the end, use it
+            if (typeof current === 'function') {
+                serviceConstructor = current;
+            }
+        }
+
+        // If still not found, try looking for just the service name without package
         if (!serviceConstructor) {
-            this.logger.error(`Service ${serviceName} not found`, 'GrpcClientFactory');
+            const shortServiceName = serviceName.split('.').pop();
+            if (!shortServiceName) {
+                throw new Error('Invalid service name');
+            }
+            this.logger.debug(
+                `Trying short service name: ${shortServiceName}`,
+                'GrpcClientFactory',
+            );
+
+            // Look for the service name anywhere in the loaded services
+            const findServiceRecursively = (obj: any, name: string): any => {
+                if (!obj || typeof obj !== 'object') return null;
+
+                // If this is the service we're looking for
+                if (obj[name] && typeof obj[name] === 'function') {
+                    return obj[name];
+                }
+
+                // Search nested objects
+                for (const key in obj) {
+                    if (obj.hasOwnProperty(key) && typeof obj[key] === 'object') {
+                        const found = findServiceRecursively(obj[key], name);
+                        if (found) return found;
+                    }
+                }
+
+                return null;
+            };
+
+            serviceConstructor = findServiceRecursively(this.protoServices, shortServiceName);
+        }
+
+        if (!serviceConstructor) {
+            // Log available services to help debugging
+            const availableServices = this.getAvailableServices(this.protoServices);
+            this.logger.error(
+                `Service ${serviceName} not found. Available services: ${availableServices.join(', ')}`,
+                'GrpcClientFactory',
+            );
             throw new Error(`Service ${serviceName} not found`);
         }
 
         return serviceConstructor;
+    }
+
+    /**
+     * Gets a list of available service names recursively
+     * @param obj The object to search
+     * @param prefix The current path prefix
+     * @returns Array of service names
+     */
+    private getAvailableServices(obj: any, prefix = ''): string[] {
+        if (!obj || typeof obj !== 'object') return [];
+
+        let services: string[] = [];
+
+        // Iterate over all properties
+        for (const key in obj) {
+            if (!obj.hasOwnProperty(key)) continue;
+
+            const value = obj[key];
+            const path = prefix ? `${prefix}.${key}` : key;
+
+            // If it's a constructor function, it's likely a service
+            if (typeof value === 'function') {
+                services.push(path);
+            }
+            // If it's an object, recurse
+            else if (typeof value === 'object' && value !== null) {
+                services = services.concat(this.getAvailableServices(value, path));
+            }
+        }
+
+        return services;
     }
 
     /**

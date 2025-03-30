@@ -3,7 +3,7 @@ import { dirname, basename, join } from 'path';
 import { globSync } from 'glob';
 import * as protobuf from 'protobufjs';
 import { watch } from 'chokidar';
-import { generateTypeDefinitions, TypeOptions } from 'src/utils';
+import { generateTypeDefinitions, TypeOptions } from '../../utils';
 import { GrpcLoggerService } from '../../services/logger.service';
 import { LogLevel } from '../../interfaces/logger.interface';
 

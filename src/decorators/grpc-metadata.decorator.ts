@@ -1,8 +1,6 @@
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import { Metadata } from '@grpc/grpc-js';
-
-// Define the metadata parameter key
-export const GRPC_METADATA_PARAM = 'grpc:metadata_param';
+import { GRPC_METADATA_PARAM } from '../constants';
 
 /**
  * Parameter decorator that extracts gRPC metadata from the request

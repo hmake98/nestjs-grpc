@@ -35,39 +35,66 @@ export class DashboardGateway
     ) {}
 
     afterInit(server: Server) {
-        // Set CORS options from module configuration
-        server.engine.on('connection', socket => {
-            socket.handshake.headers.origin = this.options.cors.origin;
-        });
+        // Set CORS options safely
+        try {
+            // Check if server and server.engine exist before accessing
+            if (server && server.engine && typeof server.engine.on === 'function') {
+                server.engine.on('connection', socket => {
+                    if (socket && socket.handshake && socket.handshake.headers) {
+                        socket.handshake.headers.origin = this.options.cors.origin;
+                    }
+                });
+            } else {
+                // Alternative approach for newer Socket.io versions
+                this.logger.log('Setting CORS options through gateway configuration');
+                // CORS is now configured through the @WebSocketGateway decorator
+            }
+        } catch (error) {
+            this.logger.error('Error setting CORS options: ' + error.message);
+        }
 
         this.logger.log('Dashboard WebSocket Gateway initialized');
 
         // Subscribe to logs
-        this.logUnsubscribe = this.dashboardService.onLog((log: LogEntry) => {
-            this.server.emit('log', log);
-        });
+        try {
+            this.logUnsubscribe = this.dashboardService.onLog((log: LogEntry) => {
+                if (this.server) {
+                    this.server.emit('log', log);
+                }
+            });
 
-        // Subscribe to connection updates
-        this.connectionUnsubscribe = this.dashboardService.onConnection(
-            (connection: GrpcConnection) => {
-                this.server.emit('connection', connection);
-            },
-        );
+            // Subscribe to connection updates
+            this.connectionUnsubscribe = this.dashboardService.onConnection(
+                (connection: GrpcConnection) => {
+                    if (this.server) {
+                        this.server.emit('connection', connection);
+                    }
+                },
+            );
 
-        // Subscribe to stats updates
-        this.statsUnsubscribe = this.dashboardService.onStats((stats: StatsData) => {
-            this.server.emit('stats', stats);
-        });
+            // Subscribe to stats updates
+            this.statsUnsubscribe = this.dashboardService.onStats((stats: StatsData) => {
+                if (this.server) {
+                    this.server.emit('stats', stats);
+                }
+            });
+        } catch (error) {
+            this.logger.error('Error subscribing to dashboard events: ' + error.message);
+        }
     }
 
     handleConnection(client: Socket) {
         this.clientCount++;
         this.logger.log(`Client connected: ${client.id}, total clients: ${this.clientCount}`);
 
-        // Send initial data
-        client.emit('services', this.dashboardService.getServices());
-        client.emit('connections', this.dashboardService.getConnections());
-        client.emit('stats', this.dashboardService.getStats());
+        try {
+            // Send initial data
+            client.emit('services', this.dashboardService.getServices());
+            client.emit('connections', this.dashboardService.getConnections());
+            client.emit('stats', this.dashboardService.getStats());
+        } catch (error) {
+            this.logger.error('Error sending initial data to client: ' + error.message);
+        }
     }
 
     handleDisconnect(client: Socket) {
@@ -82,42 +109,67 @@ export class DashboardGateway
         @MessageBody() data: { levels?: string[]; service?: string; limit?: number } = {},
         @ConnectedSocket() client: Socket,
     ) {
-        const logs = this.dashboardService.getLogs(data.levels, data.service, data.limit);
-        client.emit('logs', logs);
-        return logs;
+        try {
+            const logs = this.dashboardService.getLogs(data.levels, data.service, data.limit);
+            client.emit('logs', logs);
+            return logs;
+        } catch (error) {
+            this.logger.error('Error retrieving logs: ' + error.message);
+            return { error: error.message };
+        }
     }
 
     @SubscribeMessage('getServices')
     handleGetServices(@ConnectedSocket() client: Socket) {
-        const services = this.dashboardService.getServices();
-        client.emit('services', services);
-        return services;
+        try {
+            const services = this.dashboardService.getServices();
+            client.emit('services', services);
+            return services;
+        } catch (error) {
+            this.logger.error('Error retrieving services: ' + error.message);
+            return { error: error.message };
+        }
     }
 
     @SubscribeMessage('getConnections')
     handleGetConnections(@ConnectedSocket() client: Socket) {
-        const connections = this.dashboardService.getConnections();
-        client.emit('connections', connections);
-        return connections;
+        try {
+            const connections = this.dashboardService.getConnections();
+            client.emit('connections', connections);
+            return connections;
+        } catch (error) {
+            this.logger.error('Error retrieving connections: ' + error.message);
+            return { error: error.message };
+        }
     }
 
     @SubscribeMessage('getStats')
     handleGetStats(@ConnectedSocket() client: Socket) {
-        const stats = this.dashboardService.getStats();
-        client.emit('stats', stats);
-        return stats;
+        try {
+            const stats = this.dashboardService.getStats();
+            client.emit('stats', stats);
+            return stats;
+        } catch (error) {
+            this.logger.error('Error retrieving stats: ' + error.message);
+            return { error: error.message };
+        }
     }
 
     // Make sure we clean up when the gateway is destroyed
     onModuleDestroy() {
-        if (this.logUnsubscribe) {
-            this.logUnsubscribe();
-        }
-        if (this.connectionUnsubscribe) {
-            this.connectionUnsubscribe();
-        }
-        if (this.statsUnsubscribe) {
-            this.statsUnsubscribe();
+        try {
+            if (this.logUnsubscribe) {
+                this.logUnsubscribe();
+            }
+            if (this.connectionUnsubscribe) {
+                this.connectionUnsubscribe();
+            }
+            if (this.statsUnsubscribe) {
+                this.statsUnsubscribe();
+            }
+            this.logger.log('WebSocket Gateway cleanup completed');
+        } catch (error) {
+            this.logger.error('Error during gateway cleanup: ' + error.message);
         }
     }
 }
