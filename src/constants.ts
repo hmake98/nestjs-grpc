@@ -9,11 +9,6 @@ export const GRPC_OPTIONS = 'GRPC_OPTIONS';
 export const GRPC_LOGGER = 'GRPC_LOGGER';
 
 /**
- * Token for gRPC metadata parser injection
- */
-export const GRPC_METADATA_PARSER = 'GRPC_METADATA_PARSER';
-
-/**
  * Metadata key for gRPC service
  */
 export const GRPC_SERVICE_METADATA = 'GRPC_SERVICE_METADATA';
@@ -42,11 +37,6 @@ export const DEFAULT_KEEPALIVE_TIMEOUT_MS = 20000;
  * Default gRPC max concurrent streams
  */
 export const DEFAULT_MAX_CONCURRENT_STREAMS = 100;
-
-/**
- * Default gRPC max retry attempts
- */
-export const GRPC_METADATA_PARAM = 'grpc:metadata_param';
 
 /**
  * Error codes for gRPC

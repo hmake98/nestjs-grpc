@@ -32,6 +32,7 @@ program
     .option('-w, --watch', 'Watch mode for file changes', false)
     .option('-c, --classes', 'Generate classes instead of interfaces', false)
     .option('--no-comments', 'Disable comments in generated files')
+    .option('--no-client-interfaces', 'Do not generate client interfaces')
     .option('-f, --package-filter <package>', 'Filter by package name')
     .option('-r, --recursive', 'Recursively search directories for .proto files', true)
     .option('-v, --verbose', 'Enable verbose logging')

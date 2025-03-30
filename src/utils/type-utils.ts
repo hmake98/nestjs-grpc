@@ -33,6 +33,9 @@ export interface TypeOptions {
 
     /** Package name to filter (only generate types for this package) */
     packageFilter?: string;
+
+    /** Whether to include client interfaces */
+    includeClientInterfaces?: boolean;
 }
 
 /**
@@ -215,7 +218,10 @@ export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptio
                 // Process nested messages
                 processNamespace(nested, fullName);
             } else if (nested instanceof protobuf.Service) {
-                typeDefinitions += getServiceClientDefinition(nested, options) + '\n';
+                // Only include client interface if explicitly enabled
+                if (options?.includeClientInterfaces !== false) {
+                    typeDefinitions += getServiceClientDefinition(nested, options) + '\n';
+                }
                 typeDefinitions += getServiceInterfaceDefinition(nested, options) + '\n';
             } else if (nested instanceof protobuf.Enum) {
                 typeDefinitions += getEnumDefinition(nested, options) + '\n';

@@ -1,28 +1,7 @@
 import { RpcException } from '@nestjs/microservices';
 import { GrpcErrorCode } from '../constants';
 import { Metadata } from '@grpc/grpc-js';
-
-export interface GrpcExceptionOptions {
-    /**
-     * gRPC error code
-     */
-    code: GrpcErrorCode;
-
-    /**
-     * Error message
-     */
-    message: string;
-
-    /**
-     * Additional error details (serializable object)
-     */
-    details?: any;
-
-    /**
-     * Metadata to be sent with the error response
-     */
-    metadata?: Record<string, string | Buffer | string[] | Buffer[]>;
-}
+import { GrpcExceptionOptions } from 'src/interfaces/gprc-exception-options.interface';
 
 /**
  * gRPC-specific RPC exception with enhanced metadata support

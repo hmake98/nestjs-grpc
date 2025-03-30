@@ -62,24 +62,4 @@ export interface GrpcClientOptions {
      * @see https://grpc.github.io/grpc/core/group__grpc__arg__keys.html
      */
     channelOptions?: Record<string, any>;
-
-    /**
-     * Custom call credentials (for authentication)
-     */
-    credentials?: {
-        /**
-         * Type of authentication (e.g., 'jwt', 'oauth')
-         */
-        type: string;
-
-        /**
-         * Authentication token
-         */
-        token?: string;
-
-        /**
-         * Custom metadata for authentication
-         */
-        metadata?: Record<string, string>;
-    };
 }

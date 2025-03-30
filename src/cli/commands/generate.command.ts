@@ -17,6 +17,8 @@ interface GenerateCommandOptions {
     packageFilter?: string;
     verbose?: boolean;
     silent?: boolean;
+    // Add new option to control client interface generation
+    noClientInterfaces?: boolean;
 }
 
 export async function generateCommand(options: GenerateCommandOptions): Promise<void> {
@@ -61,6 +63,8 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
             useClasses: options.classes || false,
             includeComments: options.comments !== false,
             packageFilter: options.packageFilter,
+            // Set includeClientInterfaces to false if noClientInterfaces is true
+            includeClientInterfaces: !options.noClientInterfaces,
         };
 
         // Initial generation
