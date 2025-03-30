@@ -151,21 +151,6 @@ export class MetadataUtils {
 }
 
 /**
- * Decorator for extracting metadata from the context (for use in gRPC controllers)
- */
-export function GrpcMetadata(metadataKey?: string) {
-    return (target: any, propertyKey: string | symbol, parameterIndex: number) => {
-        // Store the metadata key and parameter index
-        Reflect.defineMetadata(
-            'grpc:metadata',
-            { key: metadataKey, index: parameterIndex },
-            target,
-            propertyKey,
-        );
-    };
-}
-
-/**
  * Gets the metadata key and parameter index for a method
  * @param target The target object
  * @param propertyKey The method name

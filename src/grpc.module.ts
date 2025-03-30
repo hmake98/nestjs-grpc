@@ -1,5 +1,5 @@
 import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
-import { APP_FILTER } from '@nestjs/core';
+import { APP_FILTER, MetadataScanner, DiscoveryModule } from '@nestjs/core';
 import { GrpcClientFactory } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
 import { TypeGeneratorService } from './services/type-generator.service';
@@ -15,7 +15,9 @@ import { GrpcMetadataExplorer } from './metadata/metadata.explorer';
 import { GrpcLogger, LogLevel } from './interfaces/logger.interface';
 
 @Global()
-@Module({})
+@Module({
+    imports: [DiscoveryModule],
+})
 export class GrpcModule {
     /**
      * Register the module with static options
@@ -34,6 +36,7 @@ export class GrpcModule {
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
+            MetadataScanner,
             GrpcMetadataExplorer,
             {
                 provide: APP_FILTER,
@@ -43,6 +46,7 @@ export class GrpcModule {
 
         return {
             module: GrpcModule,
+            imports: [DiscoveryModule],
             providers,
             exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer, GRPC_LOGGER],
         };
@@ -66,6 +70,7 @@ export class GrpcModule {
             ProtoLoaderService,
             TypeGeneratorService,
             GrpcClientFactory,
+            MetadataScanner,
             GrpcMetadataExplorer,
             {
                 provide: APP_FILTER,
@@ -75,7 +80,7 @@ export class GrpcModule {
 
         return {
             module: GrpcModule,
-            imports: options.imports || [],
+            imports: [DiscoveryModule, ...(options.imports || [])],
             providers,
             exports: [GrpcClientFactory, TypeGeneratorService, GrpcMetadataExplorer, GRPC_LOGGER],
         };
