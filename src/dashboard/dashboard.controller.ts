@@ -1,18 +1,14 @@
 import { Controller, Get, Query, Inject, Param } from '@nestjs/common';
 import { GrpcDashboardService } from './dashboard.service';
+import { GrpcDashboardOptions } from '../interfaces/grpc-dashboard-options.interface';
+import { DASHBOARD_OPTIONS } from './dashboard.constants';
 
 @Controller()
 export class GrpcDashboardController {
     constructor(
         private readonly dashboardService: GrpcDashboardService,
-        @Inject('DASHBOARD_OPTIONS') private readonly options: { apiPrefix: string },
+        @Inject(DASHBOARD_OPTIONS) private readonly options: Required<GrpcDashboardOptions>,
     ) {}
-
-    // Update the controller prefix dynamically based on the module options
-    onModuleInit() {
-        // This is a workaround since we can't use dynamic prefixes directly in the @Controller decorator
-        Reflect.defineMetadata('path', this.options.apiPrefix, GrpcDashboardController);
-    }
 
     /**
      * Get all discovered gRPC services
