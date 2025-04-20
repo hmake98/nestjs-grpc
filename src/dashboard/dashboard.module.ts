@@ -1,4 +1,4 @@
-import { DynamicModule, Module, Provider, MiddlewareConsumer, NestModule } from '@nestjs/common';
+import { DynamicModule, Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { RouterModule } from '@nestjs/core';
 import { ModulesContainer } from '@nestjs/core';
 import { GrpcDashboardController } from './dashboard.controller';
@@ -6,10 +6,10 @@ import { GrpcDashboardService } from './dashboard.service';
 import { GrpcDashboardGateway } from './dashboard.gateway';
 import { DashboardPrefixMiddleware } from './dashboard.middleware';
 import { GrpcDashboardOptions } from '../interfaces/grpc-dashboard-options.interface';
+import { GrpcOptions } from '../interfaces/grpc-options.interface';
 import { GRPC_LOGGER, GRPC_OPTIONS } from '../constants';
 import { DASHBOARD_OPTIONS } from './dashboard.constants';
 import { GrpcLogger } from '../interfaces/logger.interface';
-import { GrpcOptions } from '../interfaces/grpc-options.interface';
 import { GrpcDashboardAsyncOptions } from './dashboard.interface';
 
 /**
@@ -39,6 +39,7 @@ export class GrpcDashboardModule implements NestModule {
                         useValue: dashboardOptions,
                     },
                 ],
+                exports: [DASHBOARD_OPTIONS],
             };
         }
 
@@ -61,11 +62,76 @@ export class GrpcDashboardModule implements NestModule {
                     provide: DASHBOARD_OPTIONS,
                     useValue: dashboardOptions,
                 },
+                // This will attempt to re-use GRPC_OPTIONS from parent module scope
+                // But will fail if GRPC_OPTIONS is not in the parent scope
+                {
+                    provide: GRPC_OPTIONS,
+                    useExisting: GRPC_OPTIONS,
+                },
                 GrpcDashboardService,
                 GrpcDashboardGateway,
             ],
             controllers: [GrpcDashboardController],
-            exports: [GrpcDashboardService],
+            exports: [GrpcDashboardService, DASHBOARD_OPTIONS],
+        };
+    }
+
+    /**
+     * Register the dashboard module with gRPC options and dashboard options
+     * This method should be called from the GrpcModule to ensure proper dependency injection
+     * @param grpcOptions The gRPC options
+     * @param dashboardOptions The dashboard options
+     * @returns The dynamic module
+     */
+    static forRootWithOptions(
+        grpcOptions: GrpcOptions,
+        dashboardOptions?: GrpcDashboardOptions,
+    ): DynamicModule {
+        const completeOptions = this.getDashboardOptions(dashboardOptions);
+
+        // Don't initialize controllers and services if explicitly disabled
+        if (completeOptions.enable === false) {
+            return {
+                module: GrpcDashboardModule,
+                providers: [
+                    {
+                        provide: DASHBOARD_OPTIONS,
+                        useValue: completeOptions,
+                    },
+                ],
+                exports: [DASHBOARD_OPTIONS],
+            };
+        }
+
+        const routePath = completeOptions.apiPrefix.startsWith('/')
+            ? completeOptions.apiPrefix
+            : `/${completeOptions.apiPrefix}`;
+
+        return {
+            module: GrpcDashboardModule,
+            imports: [
+                RouterModule.register([
+                    {
+                        path: routePath,
+                        module: GrpcDashboardModule,
+                    },
+                ]),
+            ],
+            providers: [
+                {
+                    provide: DASHBOARD_OPTIONS,
+                    useValue: completeOptions,
+                },
+                // Explicitly provide GRPC_OPTIONS with the value from the parent module
+                {
+                    provide: GRPC_OPTIONS,
+                    useValue: grpcOptions,
+                },
+                GrpcDashboardService,
+                GrpcDashboardGateway,
+            ],
+            controllers: [GrpcDashboardController],
+            exports: [GrpcDashboardService, DASHBOARD_OPTIONS],
         };
     }
 
@@ -91,13 +157,26 @@ export class GrpcDashboardModule implements NestModule {
             inject: options.inject || [],
         };
 
-        // Return minimal module if dashboard is disabled
+        const routePath = {
+            provide: 'DASHBOARD_ROUTE_PATH',
+            useFactory: async (...args: any[]) => {
+                const dashboardOptions = await options.useFactory(...args);
+                const apiPrefix = dashboardOptions?.apiPrefix || 'grpc-dashboard/api';
+                return apiPrefix.startsWith('/') ? apiPrefix : `/${apiPrefix}`;
+            },
+            inject: options.inject || [],
+        };
+
+        // Create router module with the dynamic path
+        const routerImport = RouterModule.register([]);
+
         return {
             module: GrpcDashboardModule,
-            imports: [...this.createRouterModule(optionsProvider), ...(options.imports || [])],
+            imports: [routerImport, ...(options.imports || [])],
             providers: [
                 optionsProvider,
                 dashboardEnabledProvider,
+                routePath,
                 {
                     provide: GrpcDashboardService,
                     useFactory: (
@@ -143,19 +222,8 @@ export class GrpcDashboardModule implements NestModule {
                 GrpcDashboardGateway,
             ],
             controllers: [GrpcDashboardController],
-            exports: [GrpcDashboardService],
+            exports: [GrpcDashboardService, DASHBOARD_OPTIONS],
         };
-    }
-
-    /**
-     * Create the router module for the dashboard
-     * @param optionsProvider The options provider
-     * @returns An array of modules to import
-     */
-    private static createRouterModule(optionsProvider: Provider): any[] {
-        // We need to return an empty array or the RouterModule
-        // This avoids the TypeScript error by not returning a DynamicModule directly
-        return [RouterModule.register([])];
     }
 
     /**
