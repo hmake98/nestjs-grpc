@@ -5,7 +5,7 @@ import { ProtoLoaderService } from './services/proto-loader.service';
 import { TypeGeneratorService } from './services/type-generator.service';
 import { GrpcLoggerService } from './services/logger.service';
 import { GRPC_LOGGER, GRPC_OPTIONS } from './constants';
-import { GrpcDashboardOptions, GrpcOptions } from './interfaces';
+import { GrpcOptions } from './interfaces';
 import {
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
@@ -44,18 +44,17 @@ export class GrpcModule {
             },
         ];
 
-        const imports = [
-            DiscoveryModule,
-            ...(options.dashboard?.enable !== false
-                ? [GrpcDashboardModule.forRoot(options.dashboard)]
-                : []),
-        ];
+        // Only include the dashboard module if it's not explicitly disabled
+        const dashboardImports =
+            options.dashboard?.enable !== false
+                ? [GrpcDashboardModule.forRootWithOptions(options, options.dashboard)]
+                : [];
 
         return {
             module: GrpcModule,
-            imports,
+            imports: [DiscoveryModule, ...dashboardImports],
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService, GRPC_LOGGER],
+            exports: [GrpcClientFactory, TypeGeneratorService, GRPC_LOGGER, GRPC_OPTIONS],
         };
     }
 
@@ -88,18 +87,17 @@ export class GrpcModule {
             imports: [
                 DiscoveryModule,
                 ...(options.imports || []),
-                // Include the dashboard module
+                // Include the dashboard module with async options
                 GrpcDashboardModule.forRootAsync({
                     imports: options.imports || [],
                     inject: [GRPC_OPTIONS],
                     useFactory: (grpcOptions: GrpcOptions) => {
-                        // Return dashboard options from gRPC options
                         return grpcOptions.dashboard || {};
                     },
                 }),
             ],
             providers,
-            exports: [GrpcClientFactory, TypeGeneratorService, GRPC_LOGGER],
+            exports: [GrpcClientFactory, TypeGeneratorService, GRPC_LOGGER, GRPC_OPTIONS],
         };
     }
 
