@@ -7,45 +7,11 @@ import {
     GRPC_SERVICE_METADATA,
     GRPC_METHOD_METADATA,
 } from '../constants';
+import { DASHBOARD_OPTIONS } from './dashboard.constants';
 import { GrpcLogger } from '../interfaces/logger.interface';
 import { GrpcOptions } from '../interfaces/grpc-options.interface';
-
-export interface GrpcServiceInfo {
-    id: string;
-    name: string;
-    methods: string[];
-    package: string;
-    status: 'active' | 'inactive';
-    url: string;
-    lastActivity?: Date;
-}
-
-export interface GrpcConnection {
-    id: string;
-    clientId: string;
-    service: string;
-    url: string;
-    status: 'connected' | 'disconnected' | 'error';
-    established: Date;
-    lastActivity: Date;
-}
-
-export interface LogEntry {
-    id: string;
-    timestamp: Date;
-    level: 'error' | 'warn' | 'info' | 'debug' | 'verbose';
-    message: string;
-    context: string;
-    service?: string;
-    method?: string;
-}
-
-export interface StatsData {
-    totalRequests: number;
-    successfulRequests: number;
-    failedRequests: number;
-    avgResponseTime: number;
-}
+import { GrpcDashboardOptions } from '../interfaces/grpc-dashboard-options.interface';
+import { GrpcConnection, GrpcServiceInfo, LogEntry, StatsData } from './dashboard.interface';
 
 @Injectable()
 export class GrpcDashboardService implements OnModuleInit {
@@ -67,7 +33,8 @@ export class GrpcDashboardService implements OnModuleInit {
     constructor(
         @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger,
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
-        @Inject('DASHBOARD_OPTIONS') private readonly dashboardOptions: { maxLogs: number },
+        @Inject(DASHBOARD_OPTIONS)
+        private readonly dashboardOptions: Required<GrpcDashboardOptions>,
         private readonly modulesContainer: ModulesContainer,
     ) {
         this.maxLogs = dashboardOptions.maxLogs;
@@ -150,7 +117,11 @@ export class GrpcDashboardService implements OnModuleInit {
 
         if (existingIndex >= 0) {
             // Update existing connection
-            this.connections[existingIndex] = connection;
+            this.connections[existingIndex] = {
+                ...this.connections[existingIndex],
+                ...connection,
+                lastActivity: new Date(),
+            };
         } else {
             // Add new connection
             this.connections.push(connection);

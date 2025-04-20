@@ -1,6 +1,6 @@
 # nestjs-grpc
 
-A NestJS package for type-safe gRPC communication between microservices.
+A NestJS package for type-safe gRPC communication between microservices with monitoring dashboard.
 
 ## Features
 
@@ -13,6 +13,7 @@ A NestJS package for type-safe gRPC communication between microservices.
 - **Metadata Handling**: Easy access to gRPC metadata with NestJS decorators
 - **Authentication Support**: Simplified token extraction and validation
 - **Configurable Logging**: Flexible logging system with customizable log levels and outputs
+- **Monitoring Dashboard**: Real-time monitoring of gRPC services, connections, and requests
 
 ## Installation
 
@@ -109,6 +110,13 @@ import { LogLevel } from 'nestjs-grpc';
       logger: {
         level: LogLevel.INFO,  // Configure log level
         prettyPrint: true,     // Enable pretty printing (colored output)
+      },
+      // Enable the monitoring dashboard (optional)
+      dashboard: {
+        enable: true,
+        apiPrefix: 'grpc-dashboard/api', // API endpoint for dashboard
+        maxLogs: 1000,                  // Maximum number of logs to keep
+        cors: { origin: '*' }           // CORS settings for WebSocket
       }
     }),
   ],
@@ -262,6 +270,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
         logger: {
           level: configService.get('LOG_LEVEL') === 'debug' ? LogLevel.DEBUG : LogLevel.INFO,
           prettyPrint: configService.get('LOG_PRETTY_PRINT') === 'true',
+        },
+        // Configure dashboard asynchronously
+        dashboard: {
+          enable: configService.get('DASHBOARD_ENABLED') === 'true',
+          apiPrefix: configService.get('DASHBOARD_PREFIX') || 'grpc-dashboard/api',
+          maxLogs: parseInt(configService.get('DASHBOARD_MAX_LOGS') || '1000'),
         }
       }),
     }),
@@ -316,9 +330,80 @@ export class UserService {
 
 The exception filter is automatically registered when importing the GrpcModule.
 
-### Logging Configuration
+## Monitoring Dashboard
 
-#### Configure Log Levels
+The package includes a built-in monitoring dashboard for gRPC services that provides:
+
+- Service discovery and listing
+- Request and response monitoring
+- Connection tracking
+- Detailed logs with filtering
+- Real-time statistics
+
+### Dashboard Configuration
+
+```typescript
+import { GrpcModule } from 'nestjs-grpc';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      // ... other options
+      dashboard: {
+        enable: true,                   // Enable the dashboard (default: true)
+        apiPrefix: 'grpc-dashboard/api', // API endpoint for dashboard (default: 'grpc-dashboard/api')
+        maxLogs: 1000,                   // Maximum number of logs to keep (default: 1000)
+        cors: { origin: '*' }            // CORS settings for WebSocket (default: { origin: '*' })
+      }
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### Dashboard API Endpoints
+
+After configuring the dashboard, you can access the following REST API endpoints:
+
+- `GET /{apiPrefix}/services` - List all discovered gRPC services
+- `GET /{apiPrefix}/services/:id` - Get details for a specific service
+- `GET /{apiPrefix}/connections` - List all active connections
+- `GET /{apiPrefix}/logs` - Get logs with optional filtering
+- `GET /{apiPrefix}/stats` - Get request statistics
+- `GET /{apiPrefix}/info` - Get basic system information
+
+### WebSocket Events
+
+The dashboard also provides real-time updates via WebSocket with the following events:
+
+- `log` - Emitted when a new log entry is added
+- `connection` - Emitted when a connection is established or updated
+- `stats` - Emitted when statistics are updated
+
+### Using the Dashboard as a Standalone Module
+
+You can also use the dashboard module independently:
+
+```typescript
+import { Module } from '@nestjs/common';
+import { GrpcDashboardModule } from 'nestjs-grpc/dashboard';
+
+@Module({
+  imports: [
+    GrpcDashboardModule.forRoot({
+      enable: true,
+      apiPrefix: 'monitoring/grpc',
+      maxLogs: 2000,
+      cors: { origin: 'http://localhost:3000' }
+    }),
+  ],
+})
+export class MonitoringModule {}
+```
+
+## Logging Configuration
+
+### Configure Log Levels
 
 ```typescript
 import { GrpcModule, LogLevel } from 'nestjs-grpc';
@@ -338,7 +423,7 @@ import { GrpcModule, LogLevel } from 'nestjs-grpc';
 export class AppModule {}
 ```
 
-#### Using a Custom Logger
+### Using a Custom Logger
 
 You can implement your own logger by implementing the `GrpcLogger` interface:
 
@@ -396,7 +481,7 @@ export class CustomLogger implements GrpcLogger {
 export class AppModule {}
 ```
 
-#### Accessing the Logger in Your Services
+### Accessing the Logger in Your Services
 
 The logger can be injected into any service using the `GRPC_LOGGER` token:
 
@@ -419,11 +504,16 @@ export class AppService {
 }
 ```
 
-### Type Generation Options
+## CLI Tool Options
 
-Generate TypeScript interfaces with additional options:
+### Code Generation
+
+Generate TypeScript interfaces from proto files:
 
 ```bash
+# Basic usage
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated
+
 # Generate classes instead of interfaces
 npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --classes
 
@@ -441,74 +531,12 @@ npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --
 
 # Disable all logging except errors
 npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --silent
+
+# Generate without client interfaces
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --no-client-interfaces
 ```
 
-### Working with Metadata
-
-#### Server-side Metadata Handling
-
-Extract metadata in service methods:
-
-```typescript
-@GrpcService('UserService')
-export class UserService {
-  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
-
-  @GrpcMethod('getUser')
-  getUser(
-    request: GetUserRequest,
-    @GrpcMetadata() metadata: Metadata  // Get full metadata object
-  ): Observable<User> {
-    // Access all metadata
-    this.logger.debug(`Client version: ${metadata.get('client-version')}`, 'UserService');
-    // ...
-  }
-  
-  @GrpcMethod('updateUser')
-  updateUser(
-    request: UpdateUserRequest,
-    @GrpcMetadata('client-version') version: string  // Get specific metadata value
-  ): Observable<User> {
-    // Access specific metadata value directly
-    this.logger.debug(`Client version: ${version}`, 'UserService');
-    // ...
-  }
-  
-  @GrpcMethod('deleteUser')
-  deleteUser(
-    request: DeleteUserRequest,
-    @GrpcAuthToken() token: string  // Extract auth token
-  ): Observable<Empty> {
-    // Validate token
-    this.logger.debug(`Auth token: ${token}`, 'UserService');
-    // ...
-  }
-}
-```
-
-#### Client-side Metadata Handling
-
-```typescript
-import { MetadataUtils } from 'nestjs-grpc';
-import { Metadata } from '@grpc/grpc-js';
-
-// Create metadata from object
-const metadata = MetadataUtils.fromObject({
-  'client-version': '1.0.0',
-  'user-agent': 'nestjs-client'
-});
-
-// Create metadata with auth token
-const authMetadata = MetadataUtils.withAuthToken('my-jwt-token');
-
-// Merge metadata objects
-const mergedMetadata = MetadataUtils.merge(metadata, authMetadata);
-
-// Send request with metadata
-userClient.getUser({ id: '123' }, metadata);
-```
-
-## CLI Tool Options
+### CLI Help
 
 ```
 Usage: nestjs-grpc [options] [command]
@@ -527,6 +555,7 @@ Generate options:
   -w, --watch                  Watch mode for file changes
   -c, --classes                Generate classes instead of interfaces
   --no-comments                Disable comments in generated files
+  --no-client-interfaces       Do not generate client interfaces
   -f, --package-filter <name>  Filter by package name
   -r, --recursive              Recursively search directories for .proto files (default: true)
   -v, --verbose                Enable verbose logging
@@ -540,6 +569,11 @@ Generate options:
 - `forRoot(options: GrpcOptions)`: Creates a module with static options
 - `forRootAsync(options: GrpcModuleAsyncOptions)`: Creates a module with async options
 
+### GrpcDashboardModule
+
+- `forRoot(options?: GrpcDashboardOptions)`: Creates a dashboard module with static options
+- `forRootAsync(options: GrpcDashboardAsyncOptions)`: Creates a dashboard module with async options
+
 ### Decorators
 
 - `@GrpcService(name: string | GrpcServiceOptions)`: Marks a class as a gRPC service
@@ -552,8 +586,8 @@ Generate options:
 - `GrpcClientFactory`: Factory service for creating gRPC clients
 - `TypeGeneratorService`: Service for generating TypeScript interfaces
 - `ProtoLoaderService`: Service for loading protobuf definitions
-- `GrpcMetadataExplorer`: Service for exploring metadata usage in controllers
 - `GrpcLoggerService`: Service for logging with configurable log levels
+- `GrpcDashboardService`: Service for monitoring gRPC services
 
 ### Logging
 
@@ -595,21 +629,33 @@ Generate options:
 
 The package maps HTTP status codes to gRPC error codes automatically:
 
-| HTTP Status | gRPC Status Code |
-|-------------|------------------|
-| 400 | INVALID_ARGUMENT |
-| 401 | UNAUTHENTICATED |
-| 403 | PERMISSION_DENIED |
-| 404 | NOT_FOUND |
-| 409 | ALREADY_EXISTS |
-| 429 | RESOURCE_EXHAUSTED |
-| 500 | INTERNAL |
-| 501 | UNIMPLEMENTED |
-| 503 | UNAVAILABLE |
-| 504 | UNAVAILABLE |
-| 408 | DEADLINE_EXCEEDED |
-| 412 | FAILED_PRECONDITION |
-| 413 | RESOURCE_EXHAUSTED |
+| HTTP Status | gRPC Status Code    |
+| ----------- | ------------------- |
+| 400         | INVALID_ARGUMENT    |
+| 401         | UNAUTHENTICATED     |
+| 403         | PERMISSION_DENIED   |
+| 404         | NOT_FOUND           |
+| 409         | ALREADY_EXISTS      |
+| 429         | RESOURCE_EXHAUSTED  |
+| 500         | INTERNAL            |
+| 501         | UNIMPLEMENTED       |
+| 503         | UNAVAILABLE         |
+| 504         | UNAVAILABLE         |
+| 408         | DEADLINE_EXCEEDED   |
+| 412         | FAILED_PRECONDITION |
+| 413         | RESOURCE_EXHAUSTED  |
+
+## Module Support
+
+The package fully supports both CommonJS and ES Modules:
+
+```javascript
+// CommonJS
+const { GrpcModule } = require('nestjs-grpc');
+
+// ES Modules
+import { GrpcModule } from 'nestjs-grpc';
+```
 
 ## Contributing
 
