@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { Logger as NestLogger } from '@nestjs/common';
-import chalk from 'chalk';
 import { GrpcLogger, LogLevel } from '../interfaces/logger.interface';
 
 /**
@@ -124,28 +123,6 @@ export class GrpcLoggerService implements GrpcLogger {
         }
 
         const ctx = context || this.context;
-        let colorizedLevel: string;
-
-        switch (level) {
-            case 'ERROR':
-                colorizedLevel = chalk.red(level);
-                break;
-            case 'WARN':
-                colorizedLevel = chalk.yellow(level);
-                break;
-            case 'INFO':
-                colorizedLevel = chalk.green(level);
-                break;
-            case 'DEBUG':
-                colorizedLevel = chalk.blue(level);
-                break;
-            case 'VERBOSE':
-                colorizedLevel = chalk.gray(level);
-                break;
-            default:
-                colorizedLevel = level;
-        }
-
-        return `[${colorizedLevel}] [${chalk.yellow(ctx)}] ${message}`;
+        return `[${level}] [${ctx}] ${message}`;
     }
 }
