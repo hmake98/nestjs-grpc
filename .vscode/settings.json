@@ -1,3 +1,61 @@
 {
-    "git.ignoreLimitWarning": true
+    "git.ignoreLimitWarning": true,
+
+    // Editor settings
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+        "source.fixAll.eslint": "explicit"
+    },
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.rulers": [100],
+    "editor.tabSize": 2,
+    "editor.indentSize": "tabSize",
+
+    // TypeScript settings
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "typescript.tsdk": "node_modules/typescript/lib",
+
+    // JavaScript settings
+    "javascript.preferences.importModuleSpecifier": "relative",
+    "javascript.updateImportsOnFileMove.enabled": "always",
+
+    // ESLint settings
+    "eslint.validate": ["typescript", "javascript"],
+
+    // Formatter settings
+    "prettier.singleQuote": true,
+    "prettier.trailingComma": "all",
+
+    // File associations
+    "files.associations": {
+        "*.proto": "proto3"
+    },
+
+    // Search settings
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/dist": true,
+        "**/coverage": true
+    },
+
+    // Terminal settings
+    "terminal.integrated.defaultProfile.linux": "bash",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "terminal.integrated.defaultProfile.osx": "zsh",
+
+    // File settings
+    "files.exclude": {
+        "**/.git": true,
+        "**/.DS_Store": true,
+        "**/node_modules": false,
+        "**/dist": false
+    },
+    "files.eol": "\n",
+    "files.trimTrailingWhitespace": true,
+
+    // Proto language settings
+    "[proto3]": {
+        "editor.defaultFormatter": "zxh404.vscode-proto3"
+    }
 }

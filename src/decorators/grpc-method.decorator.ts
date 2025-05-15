@@ -1,6 +1,21 @@
 import { SetMetadata } from '@nestjs/common';
 import { GRPC_METHOD_METADATA } from '../constants';
-import { GrpcMethodOptions } from 'src/interfaces/grpc-method-options.interface';
+
+/**
+ * Interface for gRPC method options
+ */
+export interface GrpcMethodOptions {
+    /**
+     * Method name as defined in the proto file
+     * If not provided, the method name will be used
+     */
+    methodName?: string;
+
+    /**
+     * Whether the method is a server streaming method
+     */
+    streaming?: boolean;
+}
 
 /**
  * Decorator that marks a method as a gRPC service method.

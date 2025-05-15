@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import process from 'process';
-import { generateCommand } from './commands';
+import { generateCommand } from '../commands';
 
 // Get package version using a more compatible approach
 let packageVersion = '0.1.0';
@@ -29,7 +29,6 @@ program
         './protos/**/*.proto',
     )
     .option('-o, --output <dir>', 'Output directory for generated files', './src/generated')
-    .option('-w, --watch', 'Watch mode for file changes', false)
     .option('-c, --classes', 'Generate classes instead of interfaces', false)
     .option('--no-comments', 'Disable comments in generated files')
     .option('--no-client-interfaces', 'Do not generate client interfaces')

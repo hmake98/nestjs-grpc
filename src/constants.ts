@@ -1,12 +1,11 @@
 /**
+ * Main constants for the gRPC module
+ */
+
+/**
  * Token for gRPC options injection
  */
 export const GRPC_OPTIONS = 'GRPC_OPTIONS';
-
-/**
- * Token for gRPC logger injection
- */
-export const GRPC_LOGGER = 'GRPC_LOGGER';
 
 /**
  * Metadata key for gRPC service
@@ -22,21 +21,6 @@ export const GRPC_METHOD_METADATA = 'GRPC_METHOD_METADATA';
  * Default gRPC maximum message size (4MB)
  */
 export const DEFAULT_MAX_MESSAGE_SIZE = 4 * 1024 * 1024;
-
-/**
- * Default gRPC keepalive time (ms)
- */
-export const DEFAULT_KEEPALIVE_TIME_MS = 60000;
-
-/**
- * Default gRPC keepalive timeout (ms)
- */
-export const DEFAULT_KEEPALIVE_TIMEOUT_MS = 20000;
-
-/**
- * Default gRPC max concurrent streams
- */
-export const DEFAULT_MAX_CONCURRENT_STREAMS = 100;
 
 /**
  * Error codes for gRPC

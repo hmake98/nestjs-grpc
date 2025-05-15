@@ -6,14 +6,9 @@ import { Options } from '@grpc/proto-loader';
 import * as grpc from '@grpc/grpc-js';
 
 /**
- * Options for loading proto files
- */
-export type ProtoLoaderOptions = Options;
-
-/**
  * Default options for proto loading
  */
-const defaultOptions: ProtoLoaderOptions = {
+const defaultOptions: Options = {
     keepCase: true,
     longs: String,
     enums: String,
@@ -29,7 +24,7 @@ const defaultOptions: ProtoLoaderOptions = {
  */
 export async function loadProto(
     protoPath: string,
-    options: ProtoLoaderOptions = {},
+    options: Options = {},
 ): Promise<grpc.GrpcObject> {
     const resolvedPath = path.resolve(protoPath);
 
@@ -132,45 +127,6 @@ export function getServiceMethods(serviceConstructor: any): string[] {
 }
 
 /**
- * Validates that a method exists in a service
- * @param serviceConstructor The service constructor
- * @param methodName The method name to validate
- * @returns True if the method exists
- */
-export function validateServiceMethod(serviceConstructor: any, methodName: string): boolean {
-    const methods = getServiceMethods(serviceConstructor);
-    return methods.includes(methodName);
-}
-
-/**
- * Creates a gRPC server credential
- * @param rootCerts Root CA certificates
- * @param privateKey Server private key
- * @param certChain Server certificate chain
- * @returns Server credentials
- */
-export function createServerCredentials(
-    rootCerts?: Buffer,
-    privateKey?: Buffer,
-    certChain?: Buffer,
-): grpc.ServerCredentials {
-    if (privateKey && certChain) {
-        return grpc.ServerCredentials.createSsl(
-            rootCerts || null,
-            [
-                {
-                    private_key: privateKey,
-                    cert_chain: certChain,
-                },
-            ],
-            false,
-        );
-    }
-
-    return grpc.ServerCredentials.createInsecure();
-}
-
-/**
  * Creates a gRPC client credential
  * @param secure Whether to use secure connection
  * @param rootCerts Root CA certificates
@@ -195,22 +151,18 @@ export function createClientCredentials(
  * Creates channel options for a gRPC client
  * @param maxSendSize Maximum send message size
  * @param maxReceiveSize Maximum receive message size
- * @param keepaliveTime Keepalive time in ms
- * @param keepaliveTimeout Keepalive timeout in ms
  * @param additionalOptions Additional channel options
  * @returns Channel options object
  */
 export function createChannelOptions(
     maxSendSize?: number,
     maxReceiveSize?: number,
-    keepaliveTime = 60000,
-    keepaliveTimeout = 20000,
     additionalOptions: Record<string, any> = {},
 ): Record<string, any> {
     const options: Record<string, any> = {
-        'grpc.keepalive_time_ms': keepaliveTime,
-        'grpc.keepalive_timeout_ms': keepaliveTimeout,
-        'grpc.http2.min_time_between_pings_ms': keepaliveTime,
+        'grpc.keepalive_time_ms': 60000,
+        'grpc.keepalive_timeout_ms': 20000,
+        'grpc.http2.min_time_between_pings_ms': 60000,
         'grpc.http2.max_pings_without_data': 0,
         'grpc.keepalive_permit_without_calls': 1,
     };
@@ -227,18 +179,4 @@ export function createChannelOptions(
         ...options,
         ...additionalOptions,
     };
-}
-
-/**
- * Gets full type name with package prefix
- * @param packageName The package name
- * @param typeName The type name
- * @returns The full type name
- */
-export function getFullTypeName(packageName: string, typeName: string): string {
-    if (!packageName) {
-        return typeName;
-    }
-
-    return `${packageName}.${typeName}`;
 }
