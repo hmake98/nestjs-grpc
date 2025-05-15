@@ -143,7 +143,7 @@ export function getServiceClientDefinition(
         if (method.responseStream) {
             definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
         } else {
-            definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}>;\n`;
         }
     });
 
@@ -168,7 +168,7 @@ export function getServiceInterfaceDefinition(
         definition += `/**\n * Controller interface for ${serviceType.name} service\n */\n`;
     }
 
-    definition += `export interface ${serviceType.name}Interface {\n`;
+    definition += `export interface ${serviceType.name}Controller {\n`;
 
     serviceType.methodsArray.forEach(method => {
         // Add method comment if available and comments are enabled
@@ -185,7 +185,7 @@ export function getServiceInterfaceDefinition(
         if (method.responseStream) {
             definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
         } else {
-            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}> | Observable<${outputType}>;\n`;
+            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}>;\n`;
         }
     });
 

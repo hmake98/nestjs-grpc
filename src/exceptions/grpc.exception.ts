@@ -1,7 +1,31 @@
 import { RpcException } from '@nestjs/microservices';
 import { GrpcErrorCode } from '../constants';
 import { Metadata } from '@grpc/grpc-js';
-import { GrpcExceptionOptions } from 'src/interfaces/gprc-exception-options.interface';
+
+/**
+ * Options for the GrpcException constructor
+ */
+export interface GrpcExceptionOptions {
+    /**
+     * gRPC error code
+     */
+    code: GrpcErrorCode;
+
+    /**
+     * Error message
+     */
+    message: string;
+
+    /**
+     * Additional error details (serializable object)
+     */
+    details?: any;
+
+    /**
+     * Metadata to be sent with the error response
+     */
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>;
+}
 
 /**
  * gRPC-specific RPC exception with enhanced metadata support
@@ -82,9 +106,6 @@ export class GrpcException extends RpcException {
 
     /**
      * Creates a NOT_FOUND exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
      */
     static notFound(
         message: string,
@@ -101,9 +122,6 @@ export class GrpcException extends RpcException {
 
     /**
      * Creates an INVALID_ARGUMENT exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
      */
     static invalidArgument(
         message: string,
@@ -120,9 +138,6 @@ export class GrpcException extends RpcException {
 
     /**
      * Creates an ALREADY_EXISTS exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
      */
     static alreadyExists(
         message: string,
@@ -139,9 +154,6 @@ export class GrpcException extends RpcException {
 
     /**
      * Creates a PERMISSION_DENIED exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
      */
     static permissionDenied(
         message: string,
@@ -157,29 +169,7 @@ export class GrpcException extends RpcException {
     }
 
     /**
-     * Creates an UNAUTHENTICATED exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
-     */
-    static unauthenticated(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.UNAUTHENTICATED,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
      * Creates an INTERNAL exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
      */
     static internal(
         message: string,
@@ -188,82 +178,6 @@ export class GrpcException extends RpcException {
     ): GrpcException {
         return new GrpcException({
             code: GrpcErrorCode.INTERNAL,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a FAILED_PRECONDITION exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
-     */
-    static failedPrecondition(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.FAILED_PRECONDITION,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a RESOURCE_EXHAUSTED exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
-     */
-    static resourceExhausted(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.RESOURCE_EXHAUSTED,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a DEADLINE_EXCEEDED exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
-     */
-    static deadlineExceeded(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.DEADLINE_EXCEEDED,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a CANCELLED exception
-     * @param message The error message
-     * @param details Optional error details
-     * @param metadata Optional error metadata
-     */
-    static cancelled(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.CANCELLED,
             message,
             details,
             metadata,
