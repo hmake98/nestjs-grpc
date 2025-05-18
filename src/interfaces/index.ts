@@ -1,4 +1,5 @@
 import { Options } from '@grpc/proto-loader';
+import { GrpcErrorCode } from '../constants';
 
 /**
  * Options for the gRPC module
@@ -141,4 +142,76 @@ export interface GrpcModuleAsyncOptions {
      * Dependencies for the factory function
      */
     inject?: any[];
+}
+
+/**
+ * Interface for gRPC method options
+ */
+export interface GrpcMethodOptions {
+    /**
+     * Method name as defined in the proto file
+     * If not provided, the method name will be used
+     */
+    methodName?: string;
+
+    /**
+     * Whether the method is a server streaming method
+     */
+    streaming?: boolean;
+}
+
+/**
+ * Interface for gRPC service options
+ */
+export interface GrpcServiceOptions {
+    /**
+     * Service name as defined in the proto file
+     */
+    serviceName: string;
+
+    /**
+     * The proto package name
+     */
+    package?: string;
+}
+
+/**
+ * Options for the GrpcException constructor
+ */
+export interface GrpcExceptionOptions {
+    /**
+     * gRPC error code
+     */
+    code: GrpcErrorCode;
+
+    /**
+     * Error message
+     */
+    message: string;
+
+    /**
+     * Additional error details (serializable object)
+     */
+    details?: any;
+
+    /**
+     * Metadata to be sent with the error response
+     */
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>;
+}
+
+/**
+ * Options for the generate command
+ */
+export interface GenerateCommandOptions {
+    proto: string;
+    output: string;
+    watch: boolean;
+    recursive?: boolean;
+    classes?: boolean;
+    comments?: boolean;
+    packageFilter?: string;
+    verbose?: boolean;
+    silent?: boolean;
+    noClientInterfaces?: boolean;
 }

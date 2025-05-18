@@ -1,8 +1,4 @@
 /**
- * Main constants for the gRPC module
- */
-
-/**
  * Token for gRPC options injection
  */
 export const GRPC_OPTIONS = 'GRPC_OPTIONS';
@@ -18,7 +14,7 @@ export const GRPC_SERVICE_METADATA = 'GRPC_SERVICE_METADATA';
 export const GRPC_METHOD_METADATA = 'GRPC_METHOD_METADATA';
 
 /**
- * Default gRPC maximum message size (4MB)
+ * Default gRPC maximum message size
  */
 export const DEFAULT_MAX_MESSAGE_SIZE = 4 * 1024 * 1024;
 

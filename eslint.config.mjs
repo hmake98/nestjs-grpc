@@ -4,22 +4,21 @@ import tsParser from '@typescript-eslint/parser';
 import tsEslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
 
-// Combine recommended rules from typescript-eslint
+// Improved rule merging with null checks
 const rules = tsEslint.configs.recommended
-    .map(config => config.rules)
-    .filter(rules => rules !== undefined)
-    .reduce((a, b) => ({ ...b, ...a }), {});
+    .map(config => config?.rules || {})
+    .reduce((merged, current) => ({ ...merged, ...current }), {});
 
 export default [
     eslintConfigPrettier,
     {
         ignores: [
-            '.github/*',
-            '.husky/*',
-            'coverage/*',
-            'dist/*',
-            'docs/*',
-            'node_modules/*',
+            '.github/**/*',
+            '.husky/**/*',
+            'coverage/**/*',
+            'dist/**/*',
+            'docs/**/*',
+            'node_modules/**/*',
         ],
     },
     {
@@ -27,16 +26,16 @@ export default [
         name: 'ts/default',
         files: ['**/*.ts'],
         languageOptions: {
-            ecmaVersion: 'latest',
+            ecmaVersion: 2023,
             sourceType: 'module',
             parser: tsParser,
             parserOptions: {
-                project: 'tsconfig.json',
+                project: './tsconfig.json',
                 tsconfigRootDir: '.',
             },
         },
         linterOptions: {
-            noInlineConfig: false,  // Allow inline disabling of rules
+            noInlineConfig: false,
             reportUnusedDisableDirectives: true,
         },
         plugins: {
@@ -46,8 +45,8 @@ export default [
         rules: {
             ...rules,
             // TypeScript-specific rules
-            '@typescript-eslint/no-explicit-any': 'off',  // Allow any type for flexibility in library
-            '@typescript-eslint/explicit-module-boundary-types': 'warn',  // Encourage type safety at public API boundaries
+            '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/explicit-module-boundary-types': 'warn',
             '@typescript-eslint/no-unused-vars': [
                 'warn',
                 {
@@ -60,15 +59,21 @@ export default [
                     ignoreRestSiblings: true,
                 },
             ],
-            '@typescript-eslint/ban-types': 'warn',  // Avoid problematic types like {}
-            '@typescript-eslint/no-misused-promises': 'error',  // Prevent common promise handling errors
-            '@typescript-eslint/no-floating-promises': 'error',  // Require handling of promises
+            '@typescript-eslint/ban-types': 'warn',
+            '@typescript-eslint/no-misused-promises': [
+                'error',
+                { checksVoidReturn: false }
+            ],
+            '@typescript-eslint/no-floating-promises': 'error',
+            '@typescript-eslint/consistent-type-imports': ['warn', { prefer: 'type-imports' }],
+            '@typescript-eslint/no-import-type-side-effects': 'warn',
 
             // Code style and quality rules
-            'no-console': ['warn', { allow: ['warn', 'error'] }],  // Avoid console.log in production code
-            'no-duplicate-imports': 'error',
-            'no-return-await': 'warn',  // Redundant return await
-            'no-undef': 'off',  // TypeScript handles this
+            'no-console': ['warn', { allow: ['warn', 'error'] }],
+            'no-duplicate-imports': 'off', // Using import/no-duplicates instead
+            'no-return-await': 'off', // Using @typescript-eslint/return-await instead
+            '@typescript-eslint/return-await': ['warn', 'never'],
+            'no-undef': 'off', // TypeScript handles this
 
             // Import organization
             'import/order': [
@@ -80,33 +85,72 @@ export default [
                         'internal',
                         'parent',
                         'sibling',
-                        'index'
+                        'index',
+                        'object',
+                        'type'
                     ],
                     'newlines-between': 'always',
-                    'alphabetize': { order: 'asc' }
+                    'alphabetize': {
+                        order: 'asc',
+                        caseInsensitive: true
+                    },
+                    'pathGroups': [
+                        {
+                            pattern: '@nestjs/**',
+                            group: 'external',
+                            position: 'before'
+                        }
+                    ]
                 }
             ],
             'import/no-duplicates': 'error',
+            'import/no-unresolved': 'off', // TypeScript handles this
+            'import/namespace': 'off', // Performance improvement
         },
         settings: {
             'import/resolver': {
                 typescript: {
                     alwaysTryTypes: true,
-                    project: 'tsconfig.json',
+                    project: './tsconfig.json',
                 },
             },
+            'import/parsers': {
+                '@typescript-eslint/parser': ['.ts']
+            }
         },
     },
     {
         // Source code specific rules
         name: 'ts/source',
         files: ['src/**/*.ts'],
-        excludedFiles: ['**/*.spec.ts', '**/__tests__/**/*'],
+        // Fixed: Using "notFiles" instead of "excludedFiles"
+        notFiles: ['**/*.spec.ts', '**/__tests__/**/*'],
         rules: {
-            // More strict rules for source code
-            '@typescript-eslint/explicit-function-return-type': 'warn',  // Encourage return types
-            '@typescript-eslint/explicit-member-accessibility': ['warn', { overrides: { constructors: 'no-public' } }],
-            'no-magic-numbers': ['warn', { ignore: [-1, 0, 1] }],  // Discourage magic numbers
+            '@typescript-eslint/explicit-function-return-type': 'warn',
+            '@typescript-eslint/explicit-member-accessibility': [
+                'warn',
+                { overrides: { constructors: 'no-public' } }
+            ],
+            'no-magic-numbers': [
+                'warn',
+                {
+                    ignore: [-1, 0, 1],
+                    ignoreDefaultValues: true,
+                    ignoreEnums: true,
+                    ignoreNumericLiteralTypes: true
+                }
+            ],
+            '@typescript-eslint/naming-convention': [
+                'warn',
+                {
+                    selector: 'interface',
+                    format: ['PascalCase'],
+                    custom: {
+                        regex: '^I[A-Z]',
+                        match: false
+                    }
+                }
+            ]
         },
     },
     {
@@ -114,12 +158,16 @@ export default [
         name: 'ts/test',
         files: ['src/**/*.spec.ts', 'src/**/__tests__/**/*.ts', 'test/**/*.ts'],
         rules: {
-            // Relax rules for tests
             '@typescript-eslint/explicit-function-return-type': 'off',
             '@typescript-eslint/explicit-module-boundary-types': 'off',
             'no-magic-numbers': 'off',
-            'max-nested-callbacks': 'off',  // For deeply nested test cases
-            '@typescript-eslint/no-non-null-assertion': 'off',  // Allow non-null assertions in tests
+            'max-nested-callbacks': 'off',
+            '@typescript-eslint/no-non-null-assertion': 'off',
+            '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/unbound-method': 'off',
+            'jest/expect-expect': 'error',
+            'jest/no-disabled-tests': 'warn',
+            'jest/no-focused-tests': 'error'
         },
     },
     {
@@ -127,10 +175,11 @@ export default [
         name: 'ts/grpc',
         files: ['src/**/*.service.ts', 'src/**/*.controller.ts'],
         rules: {
-            // Rules specific to gRPC service implementations
-            '@typescript-eslint/explicit-function-return-type': 'error',  // Strict return type enforcement for services
-            '@typescript-eslint/no-floating-promises': 'error',  // Critical for gRPC service implementations
-            'no-throw-literal': 'error',  // Only throw Error instances, not literals
+            '@typescript-eslint/explicit-function-return-type': 'error',
+            '@typescript-eslint/no-floating-promises': 'error',
+            'no-throw-literal': 'off', // Using typescript-eslint's version instead
+            '@typescript-eslint/no-throw-literal': 'error',
+            '@typescript-eslint/consistent-type-assertions': ['error', { assertionStyle: 'as' }]
         }
     },
     {
@@ -138,8 +187,12 @@ export default [
         name: 'ts/decorators',
         files: ['src/**/*.decorator.ts'],
         rules: {
-            '@typescript-eslint/ban-types': 'off',  // Allow {} types in decorators
-            '@typescript-eslint/explicit-function-return-type': 'off',  // Decorators often return non-specific types
+            '@typescript-eslint/ban-types': 'off',
+            '@typescript-eslint/explicit-function-return-type': 'off',
+            '@typescript-eslint/no-this-alias': [
+                'error',
+                { allowDestructuring: true, allowedNames: ['self'] }
+            ]
         }
     },
 ];

@@ -1,20 +1,6 @@
 import { SetMetadata } from '@nestjs/common';
 import { GRPC_SERVICE_METADATA } from '../constants';
-
-/**
- * Interface for gRPC service options
- */
-export interface GrpcServiceOptions {
-    /**
-     * Service name as defined in the proto file
-     */
-    serviceName: string;
-
-    /**
-     * The proto package name
-     */
-    package?: string;
-}
+import { GrpcServiceOptions } from '../interfaces';
 
 /**
  * Decorator that marks a class as a gRPC service.
