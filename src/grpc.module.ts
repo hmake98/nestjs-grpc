@@ -1,6 +1,6 @@
 import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
 import { APP_FILTER, DiscoveryModule } from '@nestjs/core';
-import { GrpcClientFactory } from './services/grpc-client.service';
+import { GrpcClientService } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
 import { GRPC_OPTIONS } from './constants';
 import { GrpcOptions, GrpcModuleAsyncOptions } from './interfaces';
@@ -26,7 +26,7 @@ export class GrpcModule {
                 useValue: options,
             },
             ProtoLoaderService,
-            GrpcClientFactory,
+            GrpcClientService,
             {
                 provide: APP_FILTER,
                 useClass: GrpcExceptionFilter,
@@ -37,7 +37,7 @@ export class GrpcModule {
             module: GrpcModule,
             imports: [DiscoveryModule],
             providers,
-            exports: [GrpcClientFactory, GRPC_OPTIONS],
+            exports: [GrpcClientService, GRPC_OPTIONS],
         };
     }
 
@@ -54,7 +54,7 @@ export class GrpcModule {
                 inject: options.inject || [],
             },
             ProtoLoaderService,
-            GrpcClientFactory,
+            GrpcClientService,
             {
                 provide: APP_FILTER,
                 useClass: GrpcExceptionFilter,
@@ -65,7 +65,7 @@ export class GrpcModule {
             module: GrpcModule,
             imports: [DiscoveryModule],
             providers,
-            exports: [GrpcClientFactory, GRPC_OPTIONS],
+            exports: [GrpcClientService, GRPC_OPTIONS],
         };
     }
 }

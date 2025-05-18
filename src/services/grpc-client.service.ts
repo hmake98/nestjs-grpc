@@ -12,7 +12,7 @@ import {
 } from '../utils/proto-utils';
 
 @Injectable()
-export class GrpcClientFactory implements OnModuleInit {
+export class GrpcClientService implements OnModuleInit {
     private clients: Map<string, any> = new Map();
 
     constructor(

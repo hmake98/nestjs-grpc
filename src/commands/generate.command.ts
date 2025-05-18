@@ -3,22 +3,7 @@ import { dirname, basename, join } from 'path';
 import { globSync } from 'glob';
 import * as protobuf from 'protobufjs';
 import { generateTypeDefinitions } from 'src/utils';
-
-/**
- * Options for the generate command
- */
-interface GenerateCommandOptions {
-    proto: string;
-    output: string;
-    watch: boolean;
-    recursive?: boolean;
-    classes?: boolean;
-    comments?: boolean;
-    packageFilter?: string;
-    verbose?: boolean;
-    silent?: boolean;
-    noClientInterfaces?: boolean;
-}
+import { GenerateCommandOptions } from '../interfaces';
 
 /**
  * Command to generate TypeScript definitions from proto files
