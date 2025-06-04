@@ -1,19 +1,18 @@
 # nestjs-grpc
 
-A NestJS package for type-safe gRPC communication between microservices with monitoring dashboard.
+A comprehensive NestJS package for building and consuming gRPC microservices with type safety and elegant integration.
 
-## Features
+## Table of Contents
 
-- **Protocol Buffer Integration**: Seamless integration with `.proto` files
-- **Type-Safe Communication**: Automatic TypeScript interface generation from proto definitions
-- **NestJS Integration**: Custom decorators for gRPC controllers and methods
-- **Client Factory**: Simple API for consuming gRPC services with Observable support
-- **CLI Tool**: Generate TypeScript types from proto files with a single command
-- **Exception Handling**: Proper error handling and status codes for gRPC
-- **Metadata Handling**: Easy access to gRPC metadata with NestJS decorators
-- **Authentication Support**: Simplified token extraction and validation
-- **Configurable Logging**: Flexible logging system with customizable log levels and outputs
-- **Monitoring Dashboard**: Real-time monitoring of gRPC services, connections, and requests
+1. [Installation](#installation)
+2. [Module Configuration](#module-configuration)
+3. [Service Implementation](#service-implementation)
+4. [Client Usage](#client-usage)
+5. [Error Handling](#error-handling)
+6. [Type Generation](#type-generation)
+7. [Streaming Support](#streaming-support)
+8. [Advanced Features](#advanced-features)
+9. [API Reference](#api-reference)
 
 ## Installation
 
@@ -21,9 +20,192 @@ A NestJS package for type-safe gRPC communication between microservices with mon
 npm install nestjs-grpc
 ```
 
-## Quick Start
+For TypeScript development:
 
-### 1. Define your proto file
+```bash
+npm install nestjs-grpc @grpc/grpc-js @grpc/proto-loader --save
+npm install @types/node --save-dev
+```
+
+## Module Configuration
+
+### Basic Configuration
+
+The simplest way to integrate gRPC into your NestJS application:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { join } from 'path';
+import { UserController } from './user.controller';
+import { UserService } from './user.service';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      protoPath: join(__dirname, '../protos/user.proto'),
+      package: 'user',
+      url: 'localhost:50051'
+    }),
+  ],
+  controllers: [UserController],
+  providers: [UserService],
+})
+export class AppModule {}
+```
+
+### Async Configuration
+
+For dynamic configuration, especially when using ConfigService:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { join } from 'path';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot(),
+    GrpcModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        protoPath: join(__dirname, '../protos/user.proto'),
+        package: configService.get<string>('GRPC_PACKAGE', 'user'),
+        url: configService.get<string>('GRPC_URL', 'localhost:50051'),
+        secure: configService.get<boolean>('GRPC_SECURE', false),
+      }),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### Multiple Proto Files
+
+You can load multiple proto files by providing a directory path:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { join } from 'path';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      protoPath: join(__dirname, '../protos/'),  // Directory containing multiple proto files
+      package: 'app',                           // Root package name
+      url: 'localhost:50051',
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+You can also use glob patterns:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      protoPath: './protos/**/*.proto',  // Glob pattern to match multiple proto files
+      package: 'app',
+      url: 'localhost:50051',
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### Secure Communication (TLS)
+
+For production environments, you'll want to enable TLS for secure communication:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      protoPath: join(__dirname, '../protos/user.proto'),
+      package: 'user',
+      url: 'localhost:50051',
+      secure: true,
+      rootCerts: readFileSync(join(__dirname, '../certs/ca.crt')),
+      privateKey: readFileSync(join(__dirname, '../certs/client.key')),
+      certChain: readFileSync(join(__dirname, '../certs/client.crt')),
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+### Advanced Configuration
+
+Complete configuration with all available options:
+
+```typescript
+// app.module.ts
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+@Module({
+  imports: [
+    GrpcModule.forRoot({
+      // Required options
+      protoPath: join(__dirname, '../protos/user.proto'),
+      package: 'user',
+
+      // Server address (optional, defaults to localhost:50051)
+      url: 'api.example.com:443',
+
+      // TLS options
+      secure: true,
+      rootCerts: readFileSync(join(__dirname, '../certs/ca.crt')),
+      privateKey: readFileSync(join(__dirname, '../certs/client.key')),
+      certChain: readFileSync(join(__dirname, '../certs/client.crt')),
+
+      // Performance tuning
+      maxSendMessageSize: 10 * 1024 * 1024,    // 10MB
+      maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
+
+      // Proto loader options
+      loaderOptions: {
+        keepCase: true,                  // Keep field names as-is
+        longs: String,                   // Map proto64 to strings
+        enums: String,                   // Map enums to strings
+        defaults: true,                  // Set default values
+        oneofs: true,                    // Include oneofs
+        arrays: true,                    // Use arrays for repeated fields
+        objects: true,                   // Use objects for maps
+        includeDirs: [                   // Include directories for imports
+          join(__dirname, '../protos/common'),
+        ],
+      },
+    }),
+  ],
+})
+export class AppModule {}
+```
+
+## Service Implementation
+
+### Basic Service Implementation
+
+First, let's define a sample proto file:
 
 ```protobuf
 // user.proto
@@ -63,603 +245,2029 @@ message User {
 }
 ```
 
-### 2. Generate TypeScript interfaces
-
-```bash
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated
-```
-
-This will generate TypeScript interfaces in `./src/generated/user.ts`:
+Then implement the service in a controller:
 
 ```typescript
-// Generated interfaces
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import {
+  User,
+  GetUserRequest,
+  CreateUserRequest,
+  ListUsersRequest,
+  ListUsersResponse
+} from './generated/user';
+
+@Controller()
+@GrpcService('UserService')
+export class UserController {
+  private users: User[] = [
+    { id: '1', name: 'John Doe', email: 'john@example.com' },
+    { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
+  ];
+
+  @GrpcMethod('GetUser')
+  async getUser(request: GetUserRequest): Promise<User> {
+    console.log(`GetUser called with ID: ${request.id}`);
+    const user = this.users.find(u => u.id === request.id);
+
+    if (!user) {
+      throw new Error(`User with ID ${request.id} not found`);
+    }
+
+    return user;
+  }
+
+  @GrpcMethod('CreateUser')
+  async createUser(request: CreateUserRequest): Promise<User> {
+    const id = Math.floor(Math.random() * 1000).toString();
+    const newUser = { id, name: request.name, email: request.email };
+
+    this.users.push(newUser);
+    console.log(`Created user: ${id}`);
+
+    return newUser;
+  }
+
+  @GrpcMethod('ListUsers')
+  async listUsers(request: ListUsersRequest): Promise<ListUsersResponse> {
+    const { page = 1, limit = 10 } = request;
+    const startIdx = (page - 1) * limit;
+    const endIdx = startIdx + limit;
+
+    return {
+      users: this.users.slice(startIdx, endIdx),
+      total: this.users.length,
+    };
+  }
+}
+```
+
+### Working with Metadata
+
+gRPC metadata is similar to HTTP headers. Here's how to access and manipulate it:
+
+```typescript
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod, GrpcException } from 'nestjs-grpc';
+import { Metadata } from '@grpc/grpc-js';
+
+@Controller()
+@GrpcService('UserService')
+export class UserController {
+  @GrpcMethod('GetUser')
+  async getUser(request: GetUserRequest, metadata: Metadata): Promise<User> {
+    // Access metadata values
+    const token = metadata.get('authorization')[0];
+    console.log(`Received token: ${token}`);
+
+    // Validate token
+    if (!token || !this.validateToken(token.toString())) {
+      throw GrpcException.permissionDenied('Invalid or missing token');
+    }
+
+    // Process the request
+    const user = this.users.find(u => u.id === request.id);
+    if (!user) {
+      throw GrpcException.notFound(`User with ID ${request.id} not found`);
+    }
+
+    return user;
+  }
+
+  private validateToken(token: string): boolean {
+    // In a real app, implement proper token validation
+    return token.startsWith('Bearer ');
+  }
+}
+```
+
+### Service with Different Method Types
+
+gRPC supports four types of methods:
+
+1. Unary (request-response)
+2. Server streaming
+3. Client streaming
+4. Bidirectional streaming
+
+Let's define a proto file with all types:
+
+```protobuf
+// chat.proto
+syntax = "proto3";
+
+package chat;
+
+service ChatService {
+  // Unary
+  rpc SendMessage (Message) returns (MessageResponse) {}
+
+  // Server streaming
+  rpc SubscribeToMessages (SubscriptionRequest) returns (stream Message) {}
+
+  // Client streaming
+  rpc SendBulkMessages (stream Message) returns (BulkSendResponse) {}
+
+  // Bidirectional streaming
+  rpc Chat (stream Message) returns (stream Message) {}
+}
+
+message Message {
+  string id = 1;
+  string user_id = 2;
+  string content = 3;
+  int64 timestamp = 4;
+}
+
+message MessageResponse {
+  string id = 1;
+  bool delivered = 2;
+}
+
+message SubscriptionRequest {
+  string room_id = 1;
+}
+
+message BulkSendResponse {
+  int32 count = 1;
+  bool success = 2;
+}
+```
+
+Implementation:
+
+```typescript
+// chat.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { Observable, Subject, from } from 'rxjs';
+import { map, tap } from 'rxjs/operators';
+import {
+  Message,
+  MessageResponse,
+  SubscriptionRequest,
+  BulkSendResponse
+} from './generated/chat';
+
+@Controller()
+@GrpcService('ChatService')
+export class ChatController {
+  private messageSubjects = new Map<string, Subject<Message>>();
+
+  // Unary method
+  @GrpcMethod('SendMessage')
+  async sendMessage(message: Message): Promise<MessageResponse> {
+    console.log(`Message received: ${message.content}`);
+
+    // Broadcast to subscribers
+    const roomId = message.room_id || 'default';
+    const subject = this.getOrCreateSubject(roomId);
+    subject.next(message);
+
+    return {
+      id: message.id,
+      delivered: true,
+    };
+  }
+
+  // Server streaming method
+  @GrpcMethod({ methodName: 'SubscribeToMessages', streaming: true })
+  subscribeToMessages(request: SubscriptionRequest): Observable<Message> {
+    console.log(`New subscription to room: ${request.room_id}`);
+    return this.getOrCreateSubject(request.room_id).asObservable();
+  }
+
+  // Client streaming method
+  @GrpcMethod('SendBulkMessages')
+  async sendBulkMessages(messages: Observable<Message>): Promise<BulkSendResponse> {
+    let count = 0;
+
+    return new Promise<BulkSendResponse>((resolve) => {
+      messages.pipe(
+        tap(message => {
+          console.log(`Bulk message received: ${message.content}`);
+          count++;
+
+          // Broadcast to subscribers
+          const roomId = message.room_id || 'default';
+          const subject = this.getOrCreateSubject(roomId);
+          subject.next(message);
+        })
+      ).subscribe({
+        complete: () => {
+          console.log(`Bulk send completed, total: ${count}`);
+          resolve({ count, success: true });
+        },
+        error: (err) => {
+          console.error('Error in bulk send:', err);
+          resolve({ count, success: false });
+        }
+      });
+    });
+  }
+
+  // Bidirectional streaming method
+  @GrpcMethod({ methodName: 'Chat', streaming: true })
+  chat(messages: Observable<Message>): Observable<Message> {
+    // Echo service that adds a timestamp
+    return messages.pipe(
+      map(message => ({
+        ...message,
+        timestamp: Date.now(),
+        content: `ECHO: ${message.content}`
+      }))
+    );
+  }
+
+  private getOrCreateSubject(roomId: string): Subject<Message> {
+    if (!this.messageSubjects.has(roomId)) {
+      this.messageSubjects.set(roomId, new Subject<Message>());
+    }
+    return this.messageSubjects.get(roomId);
+  }
+}
+```
+
+## Client Usage
+
+### Basic Client Usage
+
+Using the client to call gRPC services:
+
+```typescript
+// user.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import {
+  UserServiceClient,
+  User,
+  GetUserRequest,
+  CreateUserRequest,
+  ListUsersRequest,
+  ListUsersResponse
+} from './generated/user';
+
+@Injectable()
+export class UserService implements OnModuleInit {
+  private userClient: UserServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    // Initialize the client
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService');
+  }
+
+  async getUserById(id: string): Promise<User> {
+    const request: GetUserRequest = { id };
+
+    try {
+      // Call the gRPC service (returns a Promise)
+      return await this.userClient.getUser(request);
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      throw error;
+    }
+  }
+
+  async createUser(name: string, email: string): Promise<User> {
+    const request: CreateUserRequest = { name, email };
+    return this.userClient.createUser(request);
+  }
+
+  async listUsers(page: number = 1, limit: number = 10): Promise<ListUsersResponse> {
+    const request: ListUsersRequest = { page, limit };
+    return this.userClient.listUsers(request);
+  }
+}
+```
+
+### Client with Custom Options
+
+Configuring the client with custom options:
+
+```typescript
+// user.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+@Injectable()
+export class UserService implements OnModuleInit {
+  private userClient: UserServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    // Create client with custom options
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService', {
+      // Override URL (e.g., for different environments)
+      url: 'user-service.example.com:443',
+
+      // Set timeout
+      timeout: 5000, // 5 seconds
+
+      // Configure retries
+      maxRetries: 3,
+      retryDelay: 300, // 300ms between retries
+
+      // Enable TLS for this specific client
+      secure: true,
+      rootCerts: readFileSync(join(__dirname, '../certs/ca.crt')),
+
+      // Custom gRPC channel options
+      channelOptions: {
+        'grpc.keepalive_time_ms': 30000,
+        'grpc.keepalive_timeout_ms': 10000,
+        'grpc.max_concurrent_streams': 100,
+      }
+    });
+  }
+}
+```
+
+### Working with Metadata in Clients
+
+Adding metadata to client requests:
+
+```typescript
+// user.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { Metadata } from '@grpc/grpc-js';
+
+@Injectable()
+export class UserService implements OnModuleInit {
+  private userClient: UserServiceClient;
+
+  constructor(
+    private readonly grpcClientService: GrpcClientService,
+    private readonly authService: AuthService,
+  ) {}
+
+  onModuleInit() {
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService');
+  }
+
+  async getUserById(id: string): Promise<User> {
+    // Create metadata
+    const metadata = new Metadata();
+
+    // Add auth token
+    metadata.add('authorization', `Bearer ${this.authService.getToken()}`);
+
+    // Add additional metadata
+    metadata.add('client-version', '1.0.0');
+    metadata.add('request-id', this.generateRequestId());
+
+    // Binary metadata (must be a Buffer)
+    metadata.add('binary-data', Buffer.from('some binary data'));
+
+    // Send the request with metadata
+    return this.userClient.getUser({ id }, metadata);
+  }
+
+  private generateRequestId(): string {
+    return Math.random().toString(36).substring(2, 15);
+  }
+}
+```
+
+### Handling Streaming Responses
+
+Working with server streaming methods:
+
+```typescript
+// chat.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { Observable } from 'rxjs';
+import { tap, map, filter } from 'rxjs/operators';
+import { ChatServiceClient, Message, SubscriptionRequest } from './generated/chat';
+
+@Injectable()
+export class ChatService implements OnModuleInit {
+  private chatClient: ChatServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    this.chatClient = this.grpcClientService.create<ChatServiceClient>('ChatService');
+  }
+
+  subscribeToRoom(roomId: string): Observable<Message> {
+    const request: SubscriptionRequest = { room_id: roomId };
+
+    // Server streaming returns an Observable
+    return this.chatClient.subscribeToMessages(request).pipe(
+      tap(message => console.log(`Message received: ${message.content}`)),
+      filter(message => message.content !== ''), // Filter out empty messages
+      map(message => ({
+        ...message,
+        content: message.content.toUpperCase(), // Transform the content
+      }))
+    );
+  }
+
+  // Example of using the streaming response
+  startChatMonitoring(roomId: string): void {
+    const subscription = this.subscribeToRoom(roomId).subscribe({
+      next: (message) => {
+        console.log(`[${new Date().toISOString()}] ${message.user_id}: ${message.content}`);
+      },
+      error: (err) => {
+        console.error('Error in chat stream:', err);
+        // Reconnect after error
+        setTimeout(() => this.startChatMonitoring(roomId), 5000);
+      },
+      complete: () => {
+        console.log('Chat stream completed');
+      }
+    });
+
+    // Store subscription for cleanup
+    this.activeSubscriptions.set(roomId, subscription);
+  }
+
+  stopChatMonitoring(roomId: string): void {
+    const subscription = this.activeSubscriptions.get(roomId);
+    if (subscription) {
+      subscription.unsubscribe();
+      this.activeSubscriptions.delete(roomId);
+    }
+  }
+}
+```
+
+### Client Streaming Examples
+
+Using client streaming to send multiple messages:
+
+```typescript
+// chat.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { Observable, Subject } from 'rxjs';
+import { ChatServiceClient, Message, BulkSendResponse } from './generated/chat';
+
+@Injectable()
+export class ChatService implements OnModuleInit {
+  private chatClient: ChatServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    this.chatClient = this.grpcClientService.create<ChatServiceClient>('ChatService');
+  }
+
+  sendBulkMessages(messages: Message[]): Promise<BulkSendResponse> {
+    // Create a subject that will emit messages
+    const messageSubject = new Subject<Message>();
+
+    // Start the client streaming request
+    const response = this.chatClient.sendBulkMessages(messageSubject.asObservable());
+
+    // Send messages one by one
+    setTimeout(() => {
+      messages.forEach(message => {
+        console.log(`Sending message: ${message.content}`);
+        messageSubject.next(message);
+      });
+
+      // Signal that we're done sending
+      messageSubject.complete();
+    }, 0);
+
+    return response;
+  }
+
+  // Bidirectional streaming example
+  chat(): { messageStream: Subject<Message>; responseStream: Observable<Message> } {
+    // Subject for sending messages
+    const messageSubject = new Subject<Message>();
+
+    // Start the bidirectional stream
+    const responseStream = this.chatClient.chat(messageSubject.asObservable());
+
+    // Return both streams for the caller to use
+    return {
+      messageStream: messageSubject,
+      responseStream
+    };
+  }
+
+  // Usage example for bidirectional streaming
+  startChatSession(): void {
+    const { messageStream, responseStream } = this.chat();
+
+    // Listen for responses
+    responseStream.subscribe({
+      next: (message) => {
+        console.log(`Echo received: ${message.content}`);
+      },
+      error: (err) => {
+        console.error('Chat error:', err);
+      },
+      complete: () => {
+        console.log('Chat completed');
+      }
+    });
+
+    // Send messages
+    messageStream.next({
+      id: '1',
+      user_id: 'user1',
+      content: 'Hello!',
+      timestamp: Date.now()
+    });
+
+    // Send more messages later
+    setTimeout(() => {
+      messageStream.next({
+        id: '2',
+        user_id: 'user1',
+        content: 'How are you?',
+        timestamp: Date.now()
+      });
+    }, 1000);
+
+    // End the chat after some time
+    setTimeout(() => {
+      messageStream.complete();
+    }, 5000);
+  }
+}
+```
+
+## Error Handling
+
+### Using GrpcException
+
+The package provides a specialized `GrpcException` class for proper gRPC error handling:
+
+```typescript
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod, GrpcException, GrpcErrorCode } from 'nestjs-grpc';
+
+@Controller()
+@GrpcService('UserService')
+export class UserController {
+  @GrpcMethod('GetUser')
+  async getUser(request: GetUserRequest): Promise<User> {
+    // Basic error with code and message
+    if (!request.id) {
+      throw new GrpcException({
+        code: GrpcErrorCode.INVALID_ARGUMENT,
+        message: 'User ID is required',
+      });
+    }
+
+    // Error with additional details
+    if (request.id === 'invalid') {
+      throw new GrpcException({
+        code: GrpcErrorCode.INVALID_ARGUMENT,
+        message: 'Invalid user ID format',
+        details: {
+          field: 'id',
+          reason: 'format',
+          expected: 'numeric ID',
+          received: request.id
+        }
+      });
+    }
+
+    // Error with metadata
+    if (request.id === 'unauthorized') {
+      throw new GrpcException({
+        code: GrpcErrorCode.PERMISSION_DENIED,
+        message: 'User is not authorized to access this resource',
+        metadata: {
+          'error-type': 'authorization',
+          'request-id': '12345',
+          'retry-after': '60'
+        }
+      });
+    }
+
+    // Implementation...
+  }
+}
+```
+
+### Using Static Helper Methods
+
+For common error types, you can use static helper methods:
+
+```typescript
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod, GrpcException } from 'nestjs-grpc';
+
+@Controller()
+@GrpcService('UserService')
+export class UserController {
+  @GrpcMethod('GetUser')
+  async getUser(request: GetUserRequest): Promise<User> {
+    // Simple error
+    if (!request.id) {
+      throw GrpcException.invalidArgument('User ID is required');
+    }
+
+    // With details
+    if (request.id === 'invalid') {
+      throw GrpcException.invalidArgument(
+        'Invalid user ID format',
+        { field: 'id', expected: 'numeric' }
+      );
+    }
+
+    // With details and metadata
+    if (request.id === 'expired') {
+      throw GrpcException.permissionDenied(
+        'User token has expired',
+        { tokenExpiredAt: new Date().toISOString() },
+        { 'retry-after': '3600', 'error-type': 'token-expired' }
+      );
+    }
+
+    // Other common error types
+    const user = this.getUserFromDb(request.id);
+
+    if (!user) {
+      throw GrpcException.notFound(`User with ID ${request.id} not found`);
+    }
+
+    if (this.isDeleted(user)) {
+      throw GrpcException.notFound('User has been deleted');
+    }
+
+    if (this.isDuplicate(user)) {
+      throw GrpcException.alreadyExists('User with this email already exists');
+    }
+
+    if (this.hasDbError()) {
+      throw GrpcException.internal('Database connection error');
+    }
+
+    return user;
+  }
+}
+```
+
+### Handling Exceptions in Clients
+
+Properly handling gRPC errors in client code:
+
+```typescript
+// user.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { status } from '@grpc/grpc-js';
+
+@Injectable()
+export class UserService implements OnModuleInit {
+  private userClient: UserServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService');
+  }
+
+  async getUserById(id: string): Promise<User> {
+    try {
+      return await this.userClient.getUser({ id });
+    } catch (error) {
+      // Check error type and code
+      if (error.code === status.NOT_FOUND) {
+        console.log(`User ${id} not found`);
+        throw new NotFoundException(`User with ID ${id} not found`);
+      }
+
+      if (error.code === status.PERMISSION_DENIED) {
+        console.log(`Permission denied for user ${id}`);
+        throw new ForbiddenException('Not authorized to access this user');
+      }
+
+      if (error.code === status.INVALID_ARGUMENT) {
+        console.log(`Invalid argument: ${error.message}`);
+        throw new BadRequestException(error.message);
+      }
+
+      // Access metadata from error
+      if (error.metadata) {
+        const errorType = error.metadata.get('error-type');
+        const retryAfter = error.metadata.get('retry-after');
+
+        if (errorType && errorType[0] === 'rate-limited') {
+          console.log(`Rate limited, retry after ${retryAfter[0]} seconds`);
+        }
+      }
+
+      // Default error handling
+      console.error('gRPC error:', error);
+      throw new InternalServerErrorException('Error fetching user');
+    }
+  }
+}
+```
+
+### Exception Filter
+
+For advanced error handling, you can create a custom exception filter:
+
+```typescript
+// grpc-http.exception-filter.ts
+import { Catch, ExceptionFilter, ArgumentsHost, HttpStatus } from '@nestjs/common';
+import { Response } from 'express';
+import { status } from '@grpc/grpc-js';
+import { GrpcException } from 'nestjs-grpc';
+
+@Catch(GrpcException)
+export class GrpcToHttpExceptionFilter implements ExceptionFilter {
+  catch(exception: GrpcException, host: ArgumentsHost) {
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+
+    // Map gRPC status to HTTP status
+    const httpStatus = this.mapGrpcToHttpStatus(exception.getCode());
+
+    // Get error details
+    const errorDetails = exception.getDetails() || {};
+
+    // Get metadata
+    const metadata = exception.getMetadata() || {};
+
+    // Set response
+    response.status(httpStatus).json({
+      statusCode: httpStatus,
+      message: exception.message,
+      error: this.getErrorNameFromHttpStatus(httpStatus),
+      details: errorDetails,
+      timestamp: new Date().toISOString(),
+      path: ctx.getRequest().url,
+      ...metadata,
+    });
+  }
+
+  private mapGrpcToHttpStatus(grpcCode: number): number {
+    switch (grpcCode) {
+      case status.OK:
+        return HttpStatus.OK;
+      case status.CANCELLED:
+        return HttpStatus.BAD_REQUEST;
+      case status.UNKNOWN:
+        return HttpStatus.INTERNAL_SERVER_ERROR;
+      case status.INVALID_ARGUMENT:
+        return HttpStatus.BAD_REQUEST;
+      case status.DEADLINE_EXCEEDED:
+        return HttpStatus.GATEWAY_TIMEOUT;
+      case status.NOT_FOUND:
+        return HttpStatus.NOT_FOUND;
+      case status.ALREADY_EXISTS:
+        return HttpStatus.CONFLICT;
+      case status.PERMISSION_DENIED:
+        return HttpStatus.FORBIDDEN;
+      case status.UNAUTHENTICATED:
+        return HttpStatus.UNAUTHORIZED;
+      case status.RESOURCE_EXHAUSTED:
+        return HttpStatus.TOO_MANY_REQUESTS;
+      case status.FAILED_PRECONDITION:
+        return HttpStatus.PRECONDITION_FAILED;
+      case status.ABORTED:
+        return HttpStatus.CONFLICT;
+      case status.OUT_OF_RANGE:
+        return HttpStatus.BAD_REQUEST;
+      case status.UNIMPLEMENTED:
+        return HttpStatus.NOT_IMPLEMENTED;
+      case status.INTERNAL:
+        return HttpStatus.INTERNAL_SERVER_ERROR;
+      case status.UNAVAILABLE:
+        return HttpStatus.SERVICE_UNAVAILABLE;
+      case status.DATA_LOSS:
+        return HttpStatus.INTERNAL_SERVER_ERROR;
+      default:
+        return HttpStatus.INTERNAL_SERVER_ERROR;
+    }
+  }
+
+  private getErrorNameFromHttpStatus(status: number): string {
+    switch (status) {
+      case HttpStatus.BAD_REQUEST:
+        return 'Bad Request';
+      case HttpStatus.UNAUTHORIZED:
+        return 'Unauthorized';
+      case HttpStatus.FORBIDDEN:
+        return 'Forbidden';
+      case HttpStatus.NOT_FOUND:
+        return 'Not Found';
+      case HttpStatus.CONFLICT:
+        return 'Conflict';
+      case HttpStatus.PRECONDITION_FAILED:
+        return 'Precondition Failed';
+      case HttpStatus.TOO_MANY_REQUESTS:
+        return 'Too Many Requests';
+      case HttpStatus.INTERNAL_SERVER_ERROR:
+        return 'Internal Server Error';
+      case HttpStatus.NOT_IMPLEMENTED:
+        return 'Not Implemented';
+      case HttpStatus.SERVICE_UNAVAILABLE:
+        return 'Service Unavailable';
+      case HttpStatus.GATEWAY_TIMEOUT:
+        return 'Gateway Timeout';
+      default:
+        return 'Error';
+    }
+  }
+}
+```
+
+Register the filter:
+
+```typescript
+// main.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { GrpcToHttpExceptionFilter } from './filters/grpc-http.exception-filter';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  // Apply filter globally
+  app.useGlobalFilters(new GrpcToHttpExceptionFilter());
+
+  await app.listen(3000);
+}
+bootstrap();
+```
+
+## Type Generation
+
+### Basic CLI Usage
+
+Generate TypeScript interfaces from proto files:
+
+```bash
+# Basic usage with one proto file
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated
+
+# Process all proto files in a directory
+npx nestjs-grpc generate --proto ./protos/ --output ./src/generated
+
+# Use a glob pattern
+npx nestjs-grpc generate --proto "./protos/**/*.proto" --output ./src/generated
+
+# Recursive search in directories
+npx nestjs-grpc generate --proto ./protos/ --recursive --output ./src/generated
+```
+
+### Generating Classes
+
+Instead of interfaces, you can generate classes:
+
+```bash
+# Generate classes
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --classes
+```
+
+Generated output:
+
+```typescript
+// Generated class
+export class User {
+  id?: string;
+  name?: string;
+  email?: string;
+}
+
+// Instead of interface
+export interface User {
+  id?: string;
+  name?: string;
+  email?: string;
+}
+```
+
+### Customizing Output
+
+Various options for customizing generated types:
+
+```bash
+# Disable comments in generated files
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --no-comments
+
+# Generate only types for a specific package
+npx nestjs-grpc generate --proto ./protos/ --output ./src/generated --package-filter user
+
+# Don't generate client interfaces
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --no-client-interfaces
+
+# Verbose output
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --verbose
+
+# Silent mode (minimal output)
+npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --silent
+```
+
+### Sample Generated Output
+
+Example of generated TypeScript definitions from a proto file:
+
+```typescript
+// Generated output for a proto file
+import { Observable } from 'rxjs';
+
+/**
+ * Request message for getting a user by ID
+ */
 export interface GetUserRequest {
   id?: string;
 }
 
+/**
+ * User creation request
+ */
+export interface CreateUserRequest {
+  name?: string;
+  email?: string;
+}
+
+/**
+ * Pagination request for listing users
+ */
+export interface ListUsersRequest {
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Response containing a list of users
+ */
+export interface ListUsersResponse {
+  users?: User[];
+  total?: number;
+}
+
+/**
+ * User entity
+ */
 export interface User {
   id?: string;
   name?: string;
   email?: string;
 }
 
+/**
+ * Client interface for UserService
+ */
 export interface UserServiceClient {
-  getUser(request: GetUserRequest): Observable<User>;
-  createUser(request: CreateUserRequest): Observable<User>;
-  listUsers(request: ListUsersRequest): Observable<ListUsersResponse>;
+  getUser(request: GetUserRequest): Promise<User>;
+  createUser(request: CreateUserRequest): Promise<User>;
+  listUsers(request: ListUsersRequest): Promise<ListUsersResponse>;
 }
 
-// etc...
+/**
+ * Controller interface for UserService
+ */
+export interface UserServiceController {
+  getUser(request: GetUserRequest): Promise<User>;
+  createUser(request: CreateUserRequest): Promise<User>;
+  listUsers(request: ListUsersRequest): Promise<ListUsersResponse>;
+}
+
+/**
+ * Status enum
+ */
+export enum UserStatus {
+  ACTIVE = 0,
+  INACTIVE = 1,
+  SUSPENDED = 2,
+}
 ```
 
-### 3. Import GrpcModule in your app
+## Streaming Support
+
+### Server Streaming
+
+Define streaming method in proto:
+
+```protobuf
+service UserService {
+  // Server streaming
+  rpc WatchUserUpdates (WatchUserRequest) returns (stream UserUpdate) {}
+}
+
+message WatchUserRequest {
+  string user_id = 1;
+}
+
+message UserUpdate {
+  string user_id = 1;
+  string field = 2;
+  string value = 3;
+  int64 timestamp = 4;
+}
+```
+
+Implement server streaming in controller:
 
 ```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { GrpcModule } from 'nestjs-grpc';
-import { join } from 'path';
-import { LogLevel } from 'nestjs-grpc';
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { Observable, interval } from 'rxjs';
+import { map, take } from 'rxjs/operators';
+import { WatchUserRequest, UserUpdate } from './generated/user';
 
-@Module({
-  imports: [
-    GrpcModule.forRoot({
-      protoPath: join(__dirname, '../protos/user.proto'),
-      package: 'user',
-      url: 'localhost:50051',
-      logger: {
-        level: LogLevel.INFO,  // Configure log level
-        prettyPrint: true,     // Enable pretty printing (colored output)
-      },
-      // Enable the monitoring dashboard (optional)
-      dashboard: {
-        enable: true,
-        apiPrefix: 'grpc-dashboard/api', // API endpoint for dashboard
-        maxLogs: 1000,                  // Maximum number of logs to keep
-        cors: { origin: '*' }           // CORS settings for WebSocket
-      }
-    }),
-  ],
-})
-export class AppModule {}
+@Controller()
+@GrpcService('UserService')
+export class UserController {
+  @GrpcMethod({ methodName: 'WatchUserUpdates', streaming: true })
+  watchUserUpdates(request: WatchUserRequest): Observable<UserUpdate> {
+    const userId = request.user_id;
+    console.log(`Starting user update stream for user ${userId}`);
+
+    // Simulate updates every second for 1 minute
+    return interval(1000).pipe(
+      take(60),
+      map(i => {
+        const updates = [
+          { field: 'last_login', value: new Date().toISOString() },
+          { field: 'status', value: 'online' },
+          { field: 'activity', value: 'viewing dashboard' },
+          { field: 'notifications', value: `${Math.floor(Math.random() * 10)}` }
+        ];
+
+        const update = updates[i % updates.length];
+
+        return {
+          user_id: userId,
+          field: update.field,
+          value: update.value,
+          timestamp: Date.now()
+        };
+      })
+    );
+  }
+}
 ```
 
-### 4. Implement the gRPC service
+Client consumption:
 
 ```typescript
 // user.service.ts
-import { Injectable, Inject } from '@nestjs/common';
-import { GrpcService, GrpcMethod, GrpcMetadata, GrpcAuthToken, GrpcLogger, GRPC_LOGGER } from 'nestjs-grpc';
-import { Observable, of } from 'rxjs';
-import { Metadata } from '@grpc/grpc-js';
-import { 
-  GetUserRequest, 
-  User, 
-  CreateUserRequest,
-  ListUsersRequest,
-  ListUsersResponse 
-} from './generated/user';
-
-@Injectable()
-@GrpcService('UserService')
-export class UserService {
-  private users: User[] = [];
-
-  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
-
-  @GrpcMethod('getUser')
-  getUser(
-    request: GetUserRequest,
-    @GrpcMetadata() metadata: Metadata
-  ): Observable<User> {
-    this.logger.debug(`GetUser request for ID: ${request.id}`, 'UserService');
-    this.logger.verbose(`Client version: ${metadata.get('client-version')}`, 'UserService');
-    
-    const user = this.users.find(u => u.id === request.id);
-    if (!user) {
-      this.logger.warn(`User not found: ${request.id}`, 'UserService');
-      throw new Error('User not found');
-    }
-    
-    this.logger.info(`User retrieved: ${user.id}`, 'UserService');
-    return of(user);
-  }
-
-  @GrpcMethod('createUser')
-  createUser(
-    request: CreateUserRequest,
-    @GrpcAuthToken() token: string
-  ): Observable<User> {
-    // Use the extracted auth token
-    this.logger.debug(`Auth token: ${token}`, 'UserService');
-    
-    const user: User = {
-      id: Date.now().toString(),
-      name: request.name,
-      email: request.email,
-    };
-    
-    this.users.push(user);
-    this.logger.info(`User created: ${user.id}`, 'UserService');
-    return of(user);
-  }
-
-  @GrpcMethod('listUsers')
-  listUsers(request: ListUsersRequest): Observable<ListUsersResponse> {
-    const { page = 1, limit = 10 } = request;
-    const startIdx = (page - 1) * limit;
-    const endIdx = startIdx + limit;
-    
-    this.logger.debug(`ListUsers request: page=${page}, limit=${limit}`, 'UserService');
-    
-    return of({
-      users: this.users.slice(startIdx, endIdx),
-      total: this.users.length,
-    });
-  }
-}
-```
-
-### 5. Consume the gRPC service from another service
-
-```typescript
-// client.service.ts
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { GrpcClientFactory, MetadataUtils, GRPC_LOGGER, GrpcLogger } from 'nestjs-grpc';
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
 import { Observable } from 'rxjs';
-import { UserServiceClient, User, GetUserRequest } from './generated/user';
+import { map, tap } from 'rxjs/operators';
+import { UserServiceClient, UserUpdate, WatchUserRequest } from './generated/user';
 
 @Injectable()
-export class ClientService implements OnModuleInit {
+export class UserService implements OnModuleInit {
   private userClient: UserServiceClient;
 
-  constructor(
-    private grpcClientFactory: GrpcClientFactory,
-    @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger
-  ) {}
+  constructor(private readonly grpcClientService: GrpcClientService) {}
 
   onModuleInit() {
-    this.userClient = this.grpcClientFactory.create<UserServiceClient>('UserService');
-    this.logger.info('gRPC client initialized', 'ClientService');
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService');
   }
 
-  getUser(id: string): Observable<User> {
-    this.logger.debug(`Fetching user with ID: ${id}`, 'ClientService');
-    
-    // Create metadata with client version
-    const metadata = MetadataUtils.fromObject({
-      'client-version': '1.0.0'
-    });
-    
-    return this.userClient.getUser({ id }, metadata);
-  }
-  
-  getUserWithAuth(id: string, token: string): Observable<User> {
-    this.logger.debug(`Fetching user with ID: ${id} (authenticated)`, 'ClientService');
-    
-    // Create metadata with authentication token
-    const metadata = MetadataUtils.withAuthToken(token);
-    
-    return this.userClient.getUser({ id }, metadata);
-  }
-}
-```
+  watchUserUpdates(userId: string): Observable<UserUpdate> {
+    const request: WatchUserRequest = { user_id: userId };
 
-## Advanced Configuration
-
-### Async Configuration
-
-You can use `forRootAsync` for dynamic module configuration:
-
-```typescript
-// app.module.ts
-import { Module } from '@nestjs/common';
-import { GrpcModule, LogLevel } from 'nestjs-grpc';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot(),
-    GrpcModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        protoPath: configService.get('GRPC_PROTO_PATH'),
-        package: configService.get('GRPC_PACKAGE'),
-        url: configService.get('GRPC_URL'),
-        logger: {
-          level: configService.get('LOG_LEVEL') === 'debug' ? LogLevel.DEBUG : LogLevel.INFO,
-          prettyPrint: configService.get('LOG_PRETTY_PRINT') === 'true',
-        },
-        // Configure dashboard asynchronously
-        dashboard: {
-          enable: configService.get('DASHBOARD_ENABLED') === 'true',
-          apiPrefix: configService.get('DASHBOARD_PREFIX') || 'grpc-dashboard/api',
-          maxLogs: parseInt(configService.get('DASHBOARD_MAX_LOGS') || '1000'),
-        }
+    return this.userClient.watchUserUpdates(request).pipe(
+      tap(update => {
+        console.log(`User ${userId} update: ${update.field} = ${update.value}`);
       }),
-    }),
-  ],
-})
-export class AppModule {}
-```
-
-### Secure Communication (TLS)
-
-```typescript
-import { readFileSync } from 'fs';
-import { join } from 'path';
-
-GrpcModule.forRoot({
-  protoPath: join(__dirname, '../protos/user.proto'),
-  package: 'user',
-  url: 'localhost:50051',
-  secure: true,
-  rootCerts: readFileSync(join(__dirname, '../certs/ca.pem')),
-  privateKey: readFileSync(join(__dirname, '../certs/server-key.pem')),
-  certChain: readFileSync(join(__dirname, '../certs/server-cert.pem')),
-  logger: {
-    level: LogLevel.INFO,
+      // Transform or filter updates if needed
+      map(update => ({
+        ...update,
+        timestamp_readable: new Date(Number(update.timestamp)).toISOString()
+      }))
+    );
   }
-})
+}
 ```
 
-### Error Handling
+### Client Streaming
 
-Use the built-in exception classes for proper gRPC error codes:
+Define client streaming in proto:
+
+```protobuf
+service UserService {
+  // Client streaming
+  rpc BulkCreateUsers (stream CreateUserRequest) returns (BulkCreateResponse) {}
+}
+
+message BulkCreateResponse {
+  int32 count = 1;
+  bool success = 2;
+  repeated string user_ids = 3;
+}
+```
+
+Implement server-side handler:
 
 ```typescript
-import { GrpcException } from 'nestjs-grpc';
-import { Observable, throwError } from 'rxjs';
+// user.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { Observable } from 'rxjs';
+import { CreateUserRequest, BulkCreateResponse } from './generated/user';
 
+@Controller()
 @GrpcService('UserService')
-export class UserService {
-  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
+export class UserController {
+  @GrpcMethod('BulkCreateUsers')
+  async bulkCreateUsers(requests: Observable<CreateUserRequest>): Promise<BulkCreateResponse> {
+    const userIds: string[] = [];
+    let count = 0;
 
-  @GrpcMethod('getUser')
-  getUser(request: GetUserRequest): Observable<User> {
-    const user = this.users.find(u => u.id === request.id);
-    if (!user) {
-      this.logger.warn(`User not found: ${request.id}`, 'UserService');
-      throw GrpcException.notFound(`User with ID ${request.id} not found`);
-    }
-    return of(user);
+    return new Promise<BulkCreateResponse>((resolve, reject) => {
+      requests.subscribe({
+        next: async (request) => {
+          try {
+            console.log(`Creating user: ${request.name}`);
+
+            // Create user (in a real app, use your user service)
+            const id = Math.floor(Math.random() * 10000).toString();
+            userIds.push(id);
+            count++;
+          } catch (error) {
+            console.error('Error creating user:', error);
+          }
+        },
+        error: (err) => {
+          console.error('Stream error:', err);
+          reject(err);
+        },
+        complete: () => {
+          console.log(`Bulk creation completed, created ${count} users`);
+          resolve({
+            count,
+            success: true,
+            user_ids: userIds
+          });
+        }
+      });
+    });
   }
 }
 ```
 
-The exception filter is automatically registered when importing the GrpcModule.
-
-## Monitoring Dashboard
-
-The package includes a built-in monitoring dashboard for gRPC services that provides:
-
-- Service discovery and listing
-- Request and response monitoring
-- Connection tracking
-- Detailed logs with filtering
-- Real-time statistics
-
-### Dashboard Configuration
+Client implementation:
 
 ```typescript
-import { GrpcModule } from 'nestjs-grpc';
-
-@Module({
-  imports: [
-    GrpcModule.forRoot({
-      // ... other options
-      dashboard: {
-        enable: true,                   // Enable the dashboard (default: true)
-        apiPrefix: 'grpc-dashboard/api', // API endpoint for dashboard (default: 'grpc-dashboard/api')
-        maxLogs: 1000,                   // Maximum number of logs to keep (default: 1000)
-        cors: { origin: '*' }            // CORS settings for WebSocket (default: { origin: '*' })
-      }
-    }),
-  ],
-})
-export class AppModule {}
-```
-
-### Dashboard API Endpoints
-
-After configuring the dashboard, you can access the following REST API endpoints:
-
-- `GET /{apiPrefix}/services` - List all discovered gRPC services
-- `GET /{apiPrefix}/services/:id` - Get details for a specific service
-- `GET /{apiPrefix}/connections` - List all active connections
-- `GET /{apiPrefix}/logs` - Get logs with optional filtering
-- `GET /{apiPrefix}/stats` - Get request statistics
-- `GET /{apiPrefix}/info` - Get basic system information
-
-### WebSocket Events
-
-The dashboard also provides real-time updates via WebSocket with the following events:
-
-- `log` - Emitted when a new log entry is added
-- `connection` - Emitted when a connection is established or updated
-- `stats` - Emitted when statistics are updated
-
-### Using the Dashboard as a Standalone Module
-
-You can also use the dashboard module independently:
-
-```typescript
-import { Module } from '@nestjs/common';
-import { GrpcDashboardModule } from 'nestjs-grpc/dashboard';
-
-@Module({
-  imports: [
-    GrpcDashboardModule.forRoot({
-      enable: true,
-      apiPrefix: 'monitoring/grpc',
-      maxLogs: 2000,
-      cors: { origin: 'http://localhost:3000' }
-    }),
-  ],
-})
-export class MonitoringModule {}
-```
-
-## Logging Configuration
-
-### Configure Log Levels
-
-```typescript
-import { GrpcModule, LogLevel } from 'nestjs-grpc';
-
-@Module({
-  imports: [
-    GrpcModule.forRoot({
-      // ... other options
-      logger: {
-        level: LogLevel.DEBUG,  // Set log level: ERROR, WARN, INFO, DEBUG, VERBOSE
-        prettyPrint: true,      // Enable colored output
-        disable: false,         // Completely disable logging
-      }
-    }),
-  ],
-})
-export class AppModule {}
-```
-
-### Using a Custom Logger
-
-You can implement your own logger by implementing the `GrpcLogger` interface:
-
-```typescript
-import { GrpcLogger, LogLevel } from 'nestjs-grpc';
-
-export class CustomLogger implements GrpcLogger {
-  private level: LogLevel = LogLevel.INFO;
-  
-  constructor(private context: string = 'App') {}
-  
-  error(message: string, context?: string, trace?: string): void {
-    if (this.level < LogLevel.ERROR) return;
-    console.error(`[ERROR] [${context || this.context}] ${message}`);
-    if (trace) console.error(trace);
-  }
-  
-  warn(message: string, context?: string): void {
-    if (this.level < LogLevel.WARN) return;
-    console.warn(`[WARN] [${context || this.context}] ${message}`);
-  }
-  
-  info(message: string, context?: string): void {
-    if (this.level < LogLevel.INFO) return;
-    console.info(`[INFO] [${context || this.context}] ${message}`);
-  }
-  
-  debug(message: string, context?: string): void {
-    if (this.level < LogLevel.DEBUG) return;
-    console.debug(`[DEBUG] [${context || this.context}] ${message}`);
-  }
-  
-  verbose(message: string, context?: string): void {
-    if (this.level < LogLevel.VERBOSE) return;
-    console.log(`[VERBOSE] [${context || this.context}] ${message}`);
-  }
-  
-  setLogLevel(level: LogLevel): void {
-    this.level = level;
-  }
-}
-
-// Use the custom logger
-@Module({
-  imports: [
-    GrpcModule.forRoot({
-      // ... other options
-      logger: {
-        customLogger: new CustomLogger('GrpcApp'),
-        level: LogLevel.DEBUG,
-      }
-    }),
-  ],
-})
-export class AppModule {}
-```
-
-### Accessing the Logger in Your Services
-
-The logger can be injected into any service using the `GRPC_LOGGER` token:
-
-```typescript
-import { Injectable, Inject } from '@nestjs/common';
-import { GRPC_LOGGER, GrpcLogger } from 'nestjs-grpc';
+// user.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { Subject } from 'rxjs';
+import { UserServiceClient, CreateUserRequest, BulkCreateResponse } from './generated/user';
 
 @Injectable()
-export class AppService {
-  constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {
-    // Use logger in your service
-    this.logger.info('AppService initialized');
+export class UserService implements OnModuleInit {
+  private userClient: UserServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    this.userClient = this.grpcClientService.create<UserServiceClient>('UserService');
   }
-  
-  doSomething(): void {
-    this.logger.debug('Doing something...', 'AppService');
-    // ... implementation
-    this.logger.info('Operation completed successfully', 'AppService');
+
+  bulkCreateUsers(users: Array<{ name: string; email: string }>): Promise<BulkCreateResponse> {
+    // Create subject for streaming requests
+    const requestSubject = new Subject<CreateUserRequest>();
+
+    // Start the client streaming request
+    const response = this.userClient.bulkCreateUsers(requestSubject.asObservable());
+
+    // Send each user creation request
+    users.forEach(user => {
+      requestSubject.next({
+        name: user.name,
+        email: user.email
+      });
+    });
+
+    // Signal end of stream
+    requestSubject.complete();
+
+    return response;
   }
 }
 ```
 
-## CLI Tool Options
+### Bidirectional Streaming
 
-### Code Generation
+Define bidirectional streaming in proto:
 
-Generate TypeScript interfaces from proto files:
+```protobuf
+service ChatService {
+  // Bidirectional streaming
+  rpc ChatSession (stream ChatMessage) returns (stream ChatMessage) {}
+}
 
-```bash
-# Basic usage
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated
-
-# Generate classes instead of interfaces
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --classes
-
-# Disable comments in generated files
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --no-comments
-
-# Filter types by package name
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --package-filter user
-
-# Watch mode for regenerating on changes
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --watch
-
-# Enable verbose logging
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --verbose
-
-# Disable all logging except errors
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --silent
-
-# Generate without client interfaces
-npx nestjs-grpc generate --proto ./protos/user.proto --output ./src/generated --no-client-interfaces
+message ChatMessage {
+  string user_id = 1;
+  string room_id = 2;
+  string content = 3;
+  int64 timestamp = 4;
+}
 ```
 
-### CLI Help
+Implement bidirectional streaming handler:
 
+```typescript
+// chat.controller.ts
+import { Controller } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { Observable, Subject } from 'rxjs';
+import { map, tap, mergeMap } from 'rxjs/operators';
+import { ChatMessage } from './generated/chat';
+
+@Controller()
+@GrpcService('ChatService')
+export class ChatController {
+  // Store of message subjects by room
+  private roomMessages = new Map<string, Subject<ChatMessage>>();
+
+  @GrpcMethod({ methodName: 'ChatSession', streaming: true })
+  chatSession(messages: Observable<ChatMessage>): Observable<ChatMessage> {
+    // Create a subject for this user's messages
+    const responseSubject = new Subject<ChatMessage>();
+    let userRoom: string;
+    let userId: string;
+
+    // Process incoming messages
+    messages.pipe(
+      tap(message => {
+        console.log(`Received message from ${message.user_id} in room ${message.room_id}: ${message.content}`);
+
+        // Set user and room ID from first message
+        if (!userRoom) {
+          userRoom = message.room_id;
+          userId = message.user_id;
+
+          // Subscribe to room messages and forward to this user
+          this.getRoomSubject(userRoom).subscribe(roomMessage => {
+            // Don't echo the user's own messages back
+            if (roomMessage.user_id !== userId) {
+              responseSubject.next(roomMessage);
+            }
+          });
+        }
+
+        // Broadcast message to room
+        this.broadcastToRoom(message);
+      })
+    ).subscribe({
+      error: (err) => {
+        console.error(`Error in chat session for user ${userId}:`, err);
+        responseSubject.error(err);
+      },
+      complete: () => {
+        console.log(`User ${userId} left chat room ${userRoom}`);
+
+        // Notify others that user left
+        if (userRoom) {
+          this.broadcastToRoom({
+            user_id: 'system',
+            room_id: userRoom,
+            content: `User ${userId} has left the chat`,
+            timestamp: Date.now()
+          });
+        }
+
+        // Don't complete the response stream - keeping it open for other users
+      }
+    });
+
+    return responseSubject.asObservable();
+  }
+
+  private getRoomSubject(roomId: string): Subject<ChatMessage> {
+    if (!this.roomMessages.has(roomId)) {
+      this.roomMessages.set(roomId, new Subject<ChatMessage>());
+    }
+    return this.roomMessages.get(roomId);
+  }
+
+  private broadcastToRoom(message: ChatMessage): void {
+    const roomSubject = this.getRoomSubject(message.room_id);
+    roomSubject.next(message);
+  }
+}
 ```
-Usage: nestjs-grpc [options] [command]
 
-Options:
-  -V, --version                output the version number
-  -h, --help                   display help for command
+Client implementation:
 
-Commands:
-  generate [options]           Generate TypeScript definitions from protobuf files
-  help [command]               display help for command
+```typescript
+// chat.service.ts
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { GrpcClientService } from 'nestjs-grpc';
+import { Subject, Observable } from 'rxjs';
+import { ChatServiceClient, ChatMessage } from './generated/chat';
 
-Generate options:
-  -p, --proto <pattern>        Pattern to match proto files (default: "./protos/**/*.proto")
-  -o, --output <dir>           Output directory for generated files (default: "./src/generated")
-  -w, --watch                  Watch mode for file changes
-  -c, --classes                Generate classes instead of interfaces
-  --no-comments                Disable comments in generated files
-  --no-client-interfaces       Do not generate client interfaces
-  -f, --package-filter <name>  Filter by package name
-  -r, --recursive              Recursively search directories for .proto files (default: true)
-  -v, --verbose                Enable verbose logging
-  -s, --silent                 Disable all logging except errors
+@Injectable()
+export class ChatService implements OnModuleInit {
+  private chatClient: ChatServiceClient;
+
+  constructor(private readonly grpcClientService: GrpcClientService) {}
+
+  onModuleInit() {
+    this.chatClient = this.grpcClientService.create<ChatServiceClient>('ChatService');
+  }
+
+  startChatSession(userId: string, roomId: string): {
+    sendMessage: (content: string) => void;
+    messages: Observable<ChatMessage>;
+    endSession: () => void;
+  } {
+    // Create message subject for sending
+    const messageSubject = new Subject<ChatMessage>();
+
+    // Start bidirectional stream
+    const responseStream = this.chatClient.chatSession(messageSubject.asObservable());
+
+    // Function to send messages
+    const sendMessage = (content: string) => {
+      messageSubject.next({
+        user_id: userId,
+        room_id: roomId,
+        content,
+        timestamp: Date.now()
+      });
+    };
+
+    // Function to end the session
+    const endSession = () => {
+      messageSubject.complete();
+    };
+
+    // Join the room
+    sendMessage(`User ${userId} has joined the chat`);
+
+    return {
+      sendMessage,
+      messages: responseStream,
+      endSession
+    };
+  }
+
+  // Example usage
+  joinChatRoom(userId: string, roomId: string): void {
+    const { sendMessage, messages, endSession } = this.startChatSession(userId, roomId);
+
+    // Store session for future use
+    this.activeSessions[userId] = { sendMessage, messages, endSession };
+
+    // Subscribe to incoming messages
+    messages.subscribe({
+      next: (message) => {
+        console.log(`[${new Date(Number(message.timestamp)).toLocaleTimeString()}] ${message.user_id}: ${message.content}`);
+      },
+      error: (err) => {
+        console.error('Chat error:', err);
+      },
+      complete: () => {
+        console.log('Chat session ended');
+      }
+    });
+  }
+
+  // Send a message to the room
+  sendChatMessage(userId: string, content: string): void {
+    const session = this.activeSessions[userId];
+    if (session) {
+      session.sendMessage(content);
+    } else {
+      console.error('No active session for user', userId);
+    }
+  }
+
+  // Leave the room
+  leaveChatRoom(userId: string): void {
+    const session = this.activeSessions[userId];
+    if (session) {
+      session.endSession();
+      delete this.activeSessions[userId];
+    }
+  }
+}
+```
+
+## Advanced Features
+
+### Using Interceptors with gRPC
+
+Interceptors work with gRPC services just like with REST controllers:
+
+```typescript
+// logging.interceptor.ts
+import { Injectable, NestInterceptor, ExecutionContext, CallHandler } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { tap } from 'rxjs/operators';
+
+@Injectable()
+export class LoggingInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    const rpc = context.switchToRpc();
+    const data = rpc.getData();
+    const type = context.getType();
+
+    console.log(`[${type}] Before... ${JSON.stringify(data)}`);
+    const now = Date.now();
+
+    return next.handle().pipe(
+      tap(response => {
+        const executionTime = Date.now() - now;
+        console.log(`[${type}] After... ${executionTime}ms`);
+        console.log(`Response: ${JSON.stringify(response)}`);
+      }),
+    );
+  }
+}
+```
+
+Register the interceptor:
+
+```typescript
+// user.controller.ts
+import { Controller, UseInterceptors } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { LoggingInterceptor } from './interceptors/logging.interceptor';
+
+@Controller()
+@GrpcService('UserService')
+@UseInterceptors(LoggingInterceptor)  // Apply to all methods
+export class UserController {
+  @GrpcMethod('GetUser')
+  @UseInterceptors(SomeOtherInterceptor)  // Apply to specific method
+  async getUser(request: GetUserRequest): Promise<User> {
+    // Implementation...
+  }
+}
+```
+
+### Using Guards with gRPC
+
+gRPC-specific guards for authentication or authorization:
+
+```typescript
+// auth.guard.ts
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { Metadata } from '@grpc/grpc-js';
+import { GrpcException } from 'nestjs-grpc';
+
+@Injectable()
+export class GrpcAuthGuard implements CanActivate {
+  constructor(private readonly authService: AuthService) {}
+
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> | Observable<boolean> {
+    // Get the gRPC metadata
+    const rpc = context.switchToRpc();
+    const metadata = rpc.getContext() as Metadata;
+
+    // Check for authentication token
+    const token = metadata.get('authorization')[0];
+    if (!token) {
+      throw GrpcException.unauthenticated('Missing authentication token');
+    }
+
+    // Validate token
+    try {
+      const user = this.authService.validateToken(token.toString());
+
+      // Add user to context
+      metadata.set('user', JSON.stringify(user));
+
+      return true;
+    } catch (error) {
+      throw GrpcException.unauthenticated('Invalid authentication token');
+    }
+  }
+}
+```
+
+Using the guard:
+
+```typescript
+// user.controller.ts
+import { Controller, UseGuards } from '@nestjs/common';
+import { GrpcService, GrpcMethod } from 'nestjs-grpc';
+import { GrpcAuthGuard } from './guards/auth.guard';
+
+@Controller()
+@GrpcService('UserService')
+@UseGuards(GrpcAuthGuard)  // Apply to all methods
+export class UserController {
+  @GrpcMethod('GetUser')
+  async getUser(request: GetUserRequest, metadata: Metadata): Promise<User> {
+    // Get authenticated user from metadata
+    const userJson = metadata.get('user')[0];
+    const user = JSON.parse(userJson.toString());
+
+    console.log(`Authenticated user: ${user.id} (${user.role})`);
+
+    // Check permissions
+    if (request.id !== user.id && user.role !== 'admin') {
+      throw GrpcException.permissionDenied('Cannot access other user data');
+    }
+
+    // Implementation...
+  }
+}
+```
+
+### Testing gRPC Services
+
+Testing gRPC controllers with NestJS testing utilities:
+
+```typescript
+// user.controller.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
+import { UserController } from './user.controller';
+import { GrpcException } from 'nestjs-grpc';
+
+describe('UserController', () => {
+  let controller: UserController;
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      controllers: [UserController],
+      // You can provide mock providers here
+    }).compile();
+
+    controller = module.get<UserController>(UserController);
+  });
+
+  it('should be defined', () => {
+    expect(controller).toBeDefined();
+  });
+
+  describe('getUser', () => {
+    it('should return a user by id', async () => {
+      const result = await controller.getUser({ id: '1' });
+
+      expect(result).toBeDefined();
+      expect(result.id).toBe('1');
+      expect(result.name).toBeDefined();
+    });
+
+    it('should throw NOT_FOUND when user does not exist', async () => {
+      try {
+        await controller.getUser({ id: 'nonexistent' });
+        fail('should have thrown an exception');
+      } catch (e) {
+        expect(e).toBeInstanceOf(GrpcException);
+        expect(e.getCode()).toBe(5); // NOT_FOUND code
+      }
+    });
+  });
+});
+```
+
+Testing gRPC clients by mocking the GrpcClientService:
+
+```typescript
+// user.service.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
+import { UserService } from './user.service';
+import { GrpcClientService } from 'nestjs-grpc';
+import { of, throwError } from 'rxjs';
+import { status } from '@grpc/grpc-js';
+
+describe('UserService', () => {
+  let service: UserService;
+  let grpcClientService: GrpcClientService;
+
+  // Mock client
+  const mockClient = {
+    getUser: jest.fn(),
+    createUser: jest.fn(),
+    listUsers: jest.fn(),
+  };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UserService,
+        {
+          provide: GrpcClientService,
+          useValue: {
+            create: jest.fn().mockReturnValue(mockClient),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get<UserService>(UserService);
+    grpcClientService = module.get<GrpcClientService>(GrpcClientService);
+
+    // Initialize service to create client
+    service.onModuleInit();
+  });
+
+  it('should be defined', () => {
+    expect(service).toBeDefined();
+  });
+
+  describe('getUserById', () => {
+    it('should return a user when successful', async () => {
+      const mockUser = { id: '1', name: 'John Doe', email: 'john@example.com' };
+      mockClient.getUser.mockResolvedValue(mockUser);
+
+      const result = await service.getUserById('1');
+
+      expect(mockClient.getUser).toHaveBeenCalledWith({ id: '1' }, undefined);
+      expect(result).toEqual(mockUser);
+    });
+
+    it('should handle not found errors', async () => {
+      // Create a gRPC error object
+      const error = {
+        code: status.NOT_FOUND,
+        message: 'User not found',
+        details: { requestedId: '999' },
+      };
+
+      mockClient.getUser.mockRejectedValue(error);
+
+      await expect(service.getUserById('999')).rejects.toThrow(/not found/i);
+    });
+  });
+
+  describe('listUsers', () => {
+    it('should return an observable of users', (done) => {
+      const mockResponse = {
+        users: [
+          { id: '1', name: 'John Doe', email: 'john@example.com' },
+          { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
+        ],
+        total: 2,
+      };
+
+      mockClient.listUsers.mockResolvedValue(mockResponse);
+
+      service.listUsers().subscribe({
+        next: (result) => {
+          expect(result).toEqual(mockResponse);
+          expect(mockClient.listUsers).toHaveBeenCalledWith({ page: 1, limit: 10 });
+          done();
+        },
+        error: done.fail,
+      });
+    });
+  });
+});
 ```
 
 ## API Reference
 
 ### GrpcModule
 
-- `forRoot(options: GrpcOptions)`: Creates a module with static options
-- `forRootAsync(options: GrpcModuleAsyncOptions)`: Creates a module with async options
+```typescript
+// Static configuration
+GrpcModule.forRoot(options: GrpcOptions): DynamicModule;
 
-### GrpcDashboardModule
+// Async configuration
+GrpcModule.forRootAsync(options: GrpcModuleAsyncOptions): DynamicModule;
+```
 
-- `forRoot(options?: GrpcDashboardOptions)`: Creates a dashboard module with static options
-- `forRootAsync(options: GrpcDashboardAsyncOptions)`: Creates a dashboard module with async options
+### GrpcOptions
+
+```typescript
+interface GrpcOptions {
+  /**
+   * Path to the proto file
+   */
+  protoPath: string;
+
+  /**
+   * Package name as defined in the proto file
+   */
+  package: string;
+
+  /**
+   * URL for the gRPC server (e.g., 'localhost:50051')
+   */
+  url?: string;
+
+  /**
+   * Whether to use secure connection (TLS)
+   */
+  secure?: boolean;
+
+  /**
+   * Root certificates for TLS (when secure is true)
+   */
+  rootCerts?: Buffer;
+
+  /**
+   * Private key for TLS (when secure is true)
+   */
+  privateKey?: Buffer;
+
+  /**
+   * Certificate chain for TLS (when secure is true)
+   */
+  certChain?: Buffer;
+
+  /**
+   * Maximum send message size in bytes
+   */
+  maxSendMessageSize?: number;
+
+  /**
+   * Maximum receive message size in bytes
+   */
+  maxReceiveMessageSize?: number;
+
+  /**
+   * Options for the proto loader
+   */
+  loaderOptions?: Options;
+}
+```
+
+### GrpcClientOptions
+
+```typescript
+interface GrpcClientOptions {
+  /**
+   * Service name as defined in the proto file
+   */
+  service: string;
+
+  /**
+   * Package name as defined in the proto file
+   */
+  package?: string;
+
+  /**
+   * Proto file path (optional if global options are used)
+   */
+  protoPath?: string;
+
+  /**
+   * URL for the gRPC server (e.g., 'localhost:50051')
+   */
+  url?: string;
+
+  /**
+   * Maximum number of retry attempts
+   */
+  maxRetries?: number;
+
+  /**
+   * Retry delay in milliseconds
+   */
+  retryDelay?: number;
+
+  /**
+   * Whether to use secure connection (TLS)
+   */
+  secure?: boolean;
+
+  /**
+   * Root certificates for TLS (when secure is true)
+   */
+  rootCerts?: Buffer;
+
+  /**
+   * Private key for TLS (when secure is true)
+   */
+  privateKey?: Buffer;
+
+  /**
+   * Certificate chain for TLS (when secure is true)
+   */
+  certChain?: Buffer;
+
+  /**
+   * Request timeout in milliseconds
+   */
+  timeout?: number;
+
+  /**
+   * Custom gRPC channel options
+   */
+  channelOptions?: Record<string, any>;
+}
+```
+
+### GrpcClientService
+
+```typescript
+class GrpcClientService implements OnModuleInit {
+  /**
+   * Creates a gRPC client for a service
+   */
+  create<T>(serviceName: string, options?: Partial<GrpcClientOptions>): T;
+}
+```
 
 ### Decorators
 
-- `@GrpcService(name: string | GrpcServiceOptions)`: Marks a class as a gRPC service
-- `@GrpcMethod(name?: string | GrpcMethodOptions)`: Marks a method as a gRPC handler
-- `@GrpcMetadata(key?: string)`: Extracts metadata or a specific metadata value from a request
-- `@GrpcAuthToken()`: Extracts the authorization token from request metadata
+```typescript
+/**
+ * Marks a class as a gRPC service
+ */
+function GrpcService(serviceName: string): ClassDecorator;
+function GrpcService(options: GrpcServiceOptions): ClassDecorator;
 
-### Services
+interface GrpcServiceOptions {
+  /**
+   * Service name as defined in the proto file
+   */
+  serviceName: string;
 
-- `GrpcClientFactory`: Factory service for creating gRPC clients
-- `TypeGeneratorService`: Service for generating TypeScript interfaces
-- `ProtoLoaderService`: Service for loading protobuf definitions
-- `GrpcLoggerService`: Service for logging with configurable log levels
-- `GrpcDashboardService`: Service for monitoring gRPC services
+  /**
+   * Package name as defined in the proto file
+   */
+  package?: string;
+}
 
-### Logging
+/**
+ * Marks a method as a gRPC handler
+ */
+function GrpcMethod(methodName?: string): MethodDecorator;
+function GrpcMethod(options: GrpcMethodOptions): MethodDecorator;
 
-- `LogLevel`: Enum for log levels (ERROR, WARN, INFO, DEBUG, VERBOSE)
-- `GrpcLogger`: Interface for implementing custom loggers
-- `GRPC_LOGGER`: Injection token for the logger
-- `GrpcLoggerOptions`: Configuration options for the logger
+interface GrpcMethodOptions {
+  /**
+   * Method name as defined in the proto file
+   */
+  methodName?: string;
 
-### Exceptions
-
-- `GrpcException`: Base exception for gRPC errors with metadata support
-  - Static methods:
-    - `notFound(message, details?, metadata?)`
-    - `invalidArgument(message, details?, metadata?)`
-    - `permissionDenied(message, details?, metadata?)`
-    - `unauthenticated(message, details?, metadata?)`
-    - `alreadyExists(message, details?, metadata?)`
-    - `internal(message, details?, metadata?)`
-    - `deadlineExceeded(message, details?, metadata?)`
-    - `failedPrecondition(message, details?, metadata?)`
-    - `resourceExhausted(message, details?, metadata?)`
-    - `cancelled(message, details?, metadata?)`
-- `GrpcExceptionFilter`: Exception filter for handling gRPC errors
-
-### Utilities
-
-- `MetadataUtils`: Helper methods for working with gRPC metadata
-  - `fromObject(obj)`: Creates a Metadata object from a plain object
-  - `toObject(metadata)`: Converts Metadata to a plain object
-  - `merge(...metadataObjects)`: Merges multiple Metadata objects
-  - `get(metadata, key, defaultValue?)`: Gets a value from metadata
-  - `getAll(metadata, key)`: Gets all values for a key
-  - `has(metadata, key)`: Checks if metadata has a key
-  - `getAuthToken(metadata)`: Extracts auth token from metadata
-  - `setAuthToken(metadata, token, scheme?)`: Sets auth token in metadata
-  - `withAuthToken(token, scheme?)`: Creates metadata with auth token
-
-## Error Codes
-
-The package maps HTTP status codes to gRPC error codes automatically:
-
-| HTTP Status | gRPC Status Code    |
-| ----------- | ------------------- |
-| 400         | INVALID_ARGUMENT    |
-| 401         | UNAUTHENTICATED     |
-| 403         | PERMISSION_DENIED   |
-| 404         | NOT_FOUND           |
-| 409         | ALREADY_EXISTS      |
-| 429         | RESOURCE_EXHAUSTED  |
-| 500         | INTERNAL            |
-| 501         | UNIMPLEMENTED       |
-| 503         | UNAVAILABLE         |
-| 504         | UNAVAILABLE         |
-| 408         | DEADLINE_EXCEEDED   |
-| 412         | FAILED_PRECONDITION |
-| 413         | RESOURCE_EXHAUSTED  |
-
-## Module Support
-
-The package fully supports both CommonJS and ES Modules:
-
-```javascript
-// CommonJS
-const { GrpcModule } = require('nestjs-grpc');
-
-// ES Modules
-import { GrpcModule } from 'nestjs-grpc';
+  /**
+   * Whether the method is a streaming method
+   */
+  streaming?: boolean;
+}
 ```
 
-## Contributing
+### GrpcException
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+```typescript
+class GrpcException extends RpcException {
+  /**
+   * Creates a new GrpcException
+   */
+  constructor(options: GrpcExceptionOptions | string);
+
+  /**
+   * Gets the gRPC status code
+   */
+  getCode(): GrpcErrorCode;
+
+  /**
+   * Gets the error details
+   */
+  getDetails(): any;
+
+  /**
+   * Gets the error metadata
+   */
+  getMetadata(): Record<string, string | Buffer | string[] | Buffer[]>;
+
+  /**
+   * Converts the metadata to a gRPC Metadata object
+   */
+  toMetadata(): Metadata;
+
+  /**
+   * Creates a NOT_FOUND exception
+   */
+  static notFound(
+    message: string,
+    details?: any,
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+  ): GrpcException;
+
+  /**
+   * Creates an INVALID_ARGUMENT exception
+   */
+  static invalidArgument(
+    message: string,
+    details?: any,
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+  ): GrpcException;
+
+  /**
+   * Creates an ALREADY_EXISTS exception
+   */
+  static alreadyExists(
+    message: string,
+    details?: any,
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+  ): GrpcException;
+
+  /**
+   * Creates a PERMISSION_DENIED exception
+   */
+  static permissionDenied(
+    message: string,
+    details?: any,
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+  ): GrpcException;
+
+  /**
+   * Creates an INTERNAL exception
+   */
+  static internal(
+    message: string,
+    details?: any,
+    metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+  ): GrpcException;
+}
+```
+
+### GrpcErrorCode
+
+```typescript
+enum GrpcErrorCode {
+  OK = 0,
+  CANCELLED = 1,
+  UNKNOWN = 2,
+  INVALID_ARGUMENT = 3,
+  DEADLINE_EXCEEDED = 4,
+  NOT_FOUND = 5,
+  ALREADY_EXISTS = 6,
+  PERMISSION_DENIED = 7,
+  RESOURCE_EXHAUSTED = 8,
+  FAILED_PRECONDITION = 9,
+  ABORTED = 10,
+  OUT_OF_RANGE = 11,
+  UNIMPLEMENTED = 12,
+  INTERNAL = 13,
+  UNAVAILABLE = 14,
+  DATA_LOSS = 15,
+  UNAUTHENTICATED = 16,
+}
+```
+
+### CLI Options
+
+```typescript
+interface GenerateCommandOptions {
+  /**
+   * Path to proto file, directory, or glob pattern
+   */
+  proto: string;
+
+  /**
+   * Output directory for generated files
+   */
+  output: string;
+
+  /**
+   * Watch for changes
+   */
+  watch: boolean;
+
+  /**
+   * Recursively search directories
+   */
+  recursive?: boolean;
+
+  /**
+   * Generate classes instead of interfaces
+   */
+  classes?: boolean;
+
+  /**
+   * Include comments in generated files
+   */
+  comments?: boolean;
+
+  /**
+   * Filter by package name
+   */
+  packageFilter?: string;
+
+  /**
+   * Enable verbose logging
+   */
+  verbose?: boolean;
+
+  /**
+   * Disable all logging except errors
+   */
+  silent?: boolean;
+
+  /**
+   * Do not generate client interfaces
+   */
+  noClientInterfaces?: boolean;
+}
+```
 
 ## License
 

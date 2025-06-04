@@ -1,25 +1,23 @@
+import { status, Metadata } from '@grpc/grpc-js';
 import {
     Catch,
     RpcExceptionFilter,
     ArgumentsHost,
     HttpException,
     HttpStatus,
-    Inject,
 } from '@nestjs/common';
-import { Observable, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
-import { status, Metadata } from '@grpc/grpc-js';
+import { Observable, throwError } from 'rxjs';
+
+import { GrpcErrorCode } from '../constants';
+
 import { GrpcException } from './grpc.exception';
-import { GrpcErrorCode, GRPC_LOGGER } from '../constants';
-import { GrpcLogger } from '../interfaces/logger.interface';
 
 /**
  * Exception filter that handles gRPC exceptions and converts them to the appropriate gRPC status with metadata
  */
 @Catch(RpcException)
 export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
-    constructor(@Inject(GRPC_LOGGER) private readonly logger: GrpcLogger) {}
-
     catch(exception: RpcException, _host: ArgumentsHost): Observable<any> {
         let statusCode: number;
         let message: string;
@@ -33,11 +31,6 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
 
             // Use the metadata from the exception
             metadata = exception.toMetadata();
-
-            this.logger.debug(
-                `Transformed gRPC exception: [${statusCode}] ${message}`,
-                'GrpcExceptionFilter',
-            );
         } else {
             // Generic RPC exception handling
             const error = exception.getError();
@@ -55,11 +48,6 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
                 if (typeof response === 'object' && response !== null) {
                     details = response;
                 }
-
-                this.logger.debug(
-                    `Transformed HTTP exception: [${error.getStatus()} → ${statusCode}] ${message}`,
-                    'GrpcExceptionFilter',
-                );
             } else {
                 statusCode = GrpcErrorCode.UNKNOWN;
                 message =
@@ -80,11 +68,6 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
                 if (typeof error === 'object' && error !== null) {
                     details = error;
                 }
-
-                this.logger.debug(
-                    `Transformed generic exception: [${statusCode}] ${message}`,
-                    'GrpcExceptionFilter',
-                );
             }
         }
 
@@ -95,30 +78,6 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
             details,
             metadata,
         };
-
-        // Log the error at an appropriate level based on the status code
-        if (
-            statusCode === GrpcErrorCode.INTERNAL ||
-            statusCode === GrpcErrorCode.UNKNOWN ||
-            statusCode === GrpcErrorCode.DATA_LOSS
-        ) {
-            // Server errors are logged as errors
-            this.logger.error(
-                `gRPC error: [${statusCode}] ${message}`,
-                'GrpcExceptionFilter',
-                details ? JSON.stringify(details) : undefined,
-            );
-        } else if (
-            statusCode === GrpcErrorCode.INVALID_ARGUMENT ||
-            statusCode === GrpcErrorCode.FAILED_PRECONDITION ||
-            statusCode === GrpcErrorCode.OUT_OF_RANGE
-        ) {
-            // Client errors related to invalid input are logged as warnings
-            this.logger.warn(`gRPC error: [${statusCode}] ${message}`, 'GrpcExceptionFilter');
-        } else {
-            // Other client errors are logged as info
-            this.logger.info(`gRPC error: [${statusCode}] ${message}`, 'GrpcExceptionFilter');
-        }
 
         return throwError(() => grpcError);
     }

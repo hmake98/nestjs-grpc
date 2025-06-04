@@ -1,13 +1,13 @@
-import { SetMetadata } from '@nestjs/common';
 import { GRPC_METHOD_METADATA } from '../constants';
-import { GrpcMethodOptions } from 'src/interfaces/grpc-method-options.interface';
+
+import type { GrpcMethodOptions } from '../interfaces';
 
 /**
  * Decorator that marks a method as a gRPC service method.
  * @param methodNameOrOptions The method name as defined in the proto file or options object
  */
 export function GrpcMethod(methodNameOrOptions?: string | GrpcMethodOptions): MethodDecorator {
-    const options =
+    const options: GrpcMethodOptions =
         typeof methodNameOrOptions === 'string'
             ? { methodName: methodNameOrOptions }
             : methodNameOrOptions || {};
@@ -18,6 +18,10 @@ export function GrpcMethod(methodNameOrOptions?: string | GrpcMethodOptions): Me
             options.methodName = key.toString();
         }
 
-        return SetMetadata(GRPC_METHOD_METADATA, options)(target, key, descriptor);
+        // Ensure metadata is applied to the prototype, not the constructor
+        Reflect.defineMetadata(GRPC_METHOD_METADATA, options, target, key);
+
+        // Explicitly return the descriptor to match the expected method signature
+        return descriptor;
     };
 }
