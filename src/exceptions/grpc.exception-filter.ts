@@ -1,3 +1,4 @@
+import { status, Metadata } from '@grpc/grpc-js';
 import {
     Catch,
     RpcExceptionFilter,
@@ -5,11 +6,12 @@ import {
     HttpException,
     HttpStatus,
 } from '@nestjs/common';
-import { Observable, throwError } from 'rxjs';
 import { RpcException } from '@nestjs/microservices';
-import { status, Metadata } from '@grpc/grpc-js';
-import { GrpcException } from './grpc.exception';
+import { Observable, throwError } from 'rxjs';
+
 import { GrpcErrorCode } from '../constants';
+
+import { GrpcException } from './grpc.exception';
 
 /**
  * Exception filter that handles gRPC exceptions and converts them to the appropriate gRPC status with metadata

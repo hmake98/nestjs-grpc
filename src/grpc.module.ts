@@ -1,10 +1,11 @@
 import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
 import { APP_FILTER, DiscoveryModule } from '@nestjs/core';
+
+import { GRPC_OPTIONS } from './constants';
+import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
+import { GrpcOptions, GrpcModuleAsyncOptions } from './interfaces';
 import { GrpcClientService } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
-import { GRPC_OPTIONS } from './constants';
-import { GrpcOptions, GrpcModuleAsyncOptions } from './interfaces';
-import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 
 /**
  * NestJS module for gRPC service integration

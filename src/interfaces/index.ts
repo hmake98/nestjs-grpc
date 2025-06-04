@@ -1,5 +1,5 @@
-import { Options } from '@grpc/proto-loader';
-import { GrpcErrorCode } from '../constants';
+import type { GrpcErrorCode } from '../constants';
+import type { Options } from '@grpc/proto-loader';
 
 /**
  * Options for the gRPC module
