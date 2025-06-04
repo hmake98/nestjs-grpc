@@ -1,41 +1,46 @@
 #!/usr/bin/env node
 
-// Simple CommonJS approach for the CLI binary
-// This avoids the import.meta issue by using a more straightforward detection method
+// Streamlined CLI binary with better error handling and validation
+const fs = require('fs');
+const path = require('path');
 
-(async () => {
-    try {
-        // Try to require the CLI module directly
-        // This works for both CommonJS and most hybrid setups
-        require('../dist/cli/cli');
-    } catch (error) {
-        // If the above fails, it might be because the dist folder doesn't exist
-        // or there's a module resolution issue
-        console.error('Error starting CLI:', error.message);
+function validateEnvironment() {
+    const distPath = path.join(__dirname, '..', 'dist');
+    const cliPath = path.join(distPath, 'cli', 'cli.js');
 
-        // Check if the dist folder exists
-        const fs = require('fs');
-        const path = require('path');
-        const distPath = path.join(__dirname, '..', 'dist');
-
-        if (!fs.existsSync(distPath)) {
-            console.error('The dist folder does not exist. Please build the package first:');
-            console.error('  npm run build');
-            process.exit(1);
-        }
-
-        // Check if the CLI file exists
-        const cliPath = path.join(distPath, 'cli', 'cli.js');
-        if (!fs.existsSync(cliPath)) {
-            console.error('The CLI file does not exist at:', cliPath);
-            console.error('Please build the package first:');
-            console.error('  npm run build');
-            process.exit(1);
-        }
-
-        console.error('Fatal error: Could not load CLI module');
-        console.error('Please check the package installation and try rebuilding:');
-        console.error('  npm run build');
+    if (!fs.existsSync(distPath)) {
+        console.error('Error: Package not built. Run "npm run build" first.');
         process.exit(1);
     }
-})();
+
+    if (!fs.existsSync(cliPath)) {
+        console.error('Error: CLI module not found. Run "npm run build" first.');
+        process.exit(1);
+    }
+
+    return cliPath;
+}
+
+function startCli() {
+    try {
+        const cliPath = validateEnvironment();
+        require(cliPath);
+    } catch (error) {
+        console.error('Fatal error:', error.message);
+        console.error('Please reinstall the package or run "npm run build"');
+        process.exit(1);
+    }
+}
+
+// Graceful error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught exception:', error.message);
+    process.exit(1);
+});
+
+process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection:', reason);
+    process.exit(1);
+});
+
+startCli();

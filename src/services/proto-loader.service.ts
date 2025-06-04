@@ -10,57 +10,82 @@ import { loadProto, getServiceByName } from '../utils/proto-utils';
 
 @Injectable()
 export class ProtoLoaderService implements OnModuleInit {
-    private protoDefinition: any;
+    private protoDefinition: any = null;
+    private isLoaded: boolean = false;
+    private loadingPromise: Promise<any> | null = null;
 
-    constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {}
+    constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {
+        this.validateOptions();
+    }
+
+    /**
+     * Validates gRPC options
+     */
+    private validateOptions(): void {
+        if (!this.options) {
+            throw new Error('GRPC_OPTIONS is required');
+        }
+
+        if (!this.options.protoPath || typeof this.options.protoPath !== 'string') {
+            throw new Error('protoPath is required and must be a string');
+        }
+
+        if (!this.options.package || typeof this.options.package !== 'string') {
+            throw new Error('package is required and must be a string');
+        }
+    }
 
     /**
      * Initialize the service on module initialization
      */
     async onModuleInit(): Promise<void> {
-        await this.load();
+        try {
+            await this.load();
+        } catch (error) {
+            throw new Error(`Failed to initialize ProtoLoaderService: ${error.message}`);
+        }
     }
 
     /**
-     * Loads the proto file(s) and returns the package definition
-     * @returns The package definition
+     * Loads the proto file(s) with comprehensive error handling
      */
     async load(): Promise<any> {
+        // Return existing loading promise if already in progress
+        if (this.loadingPromise) {
+            return this.loadingPromise;
+        }
+
+        // Return cached definition if already loaded
+        if (this.isLoaded && this.protoDefinition) {
+            return this.protoDefinition;
+        }
+
+        // Start loading process
+        this.loadingPromise = this.performLoad();
+
+        try {
+            const result = await this.loadingPromise;
+            this.isLoaded = true;
+            return result;
+        } catch (error) {
+            this.loadingPromise = null; // Reset to allow retry
+            throw error;
+        }
+    }
+
+    /**
+     * Performs the actual loading logic
+     */
+    private async performLoad(): Promise<any> {
         const { protoPath, package: packageName, loaderOptions } = this.options;
 
         try {
-            // Check if protoPath is a directory or a glob pattern
+            this.validateProtoPath(protoPath);
+
             if (this.isDirectory(protoPath) || this.isGlobPattern(protoPath)) {
-                // Find all proto files in the directory/pattern
-                const protoFiles = await this.findProtoFiles(protoPath);
-
-                if (protoFiles.length === 0) {
-                    throw new Error(`No proto files found in ${protoPath}`);
-                }
-
-                // Load all found proto files
-                const services = {};
-                for (const file of protoFiles) {
-                    try {
-                        const packageDef = await loadProto(file, loaderOptions);
-                        const fileServices = this.getServiceByPackageName(packageDef, packageName);
-
-                        // Merge services from multiple files
-                        Object.assign(services, fileServices);
-                    } catch (fileError) {
-                        console.warn(`Error loading proto file ${file}: ${fileError.message}`);
-                    }
-                }
-
-                this.protoDefinition = services;
-                return services;
+                return await this.loadMultipleProtoFiles(protoPath, packageName, loaderOptions);
             } else {
-                // Direct file path
-                const packageDefinition = await loadProto(protoPath, loaderOptions);
-                const services = this.getServiceByPackageName(packageDefinition, packageName);
-
-                this.protoDefinition = services;
-                return services;
+                return await this.loadSingleProtoFile(protoPath, packageName, loaderOptions);
             }
         } catch (error) {
             throw new Error(`Failed to load proto file(s): ${error.message}`);
@@ -68,51 +93,115 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Gets the loaded proto definition
-     * @returns The proto definition
+     * Validates proto path exists and is accessible
+     */
+    private validateProtoPath(protoPath: string): void {
+        if (!protoPath.includes('*') && !this.isGlobPattern(protoPath)) {
+            try {
+                fs.accessSync(protoPath, fs.constants.R_OK);
+            } catch {
+                throw new Error(`Proto path is not accessible: ${protoPath}`);
+            }
+        }
+    }
+
+    /**
+     * Loads multiple proto files from directory or glob pattern
+     */
+    private async loadMultipleProtoFiles(
+        protoPath: string,
+        packageName: string,
+        loaderOptions: any,
+    ): Promise<any> {
+        const protoFiles = await this.findProtoFiles(protoPath);
+
+        if (protoFiles.length === 0) {
+            throw new Error(`No proto files found in ${protoPath}`);
+        }
+
+        const services = {};
+        const errors: string[] = [];
+
+        for (const file of protoFiles) {
+            try {
+                const packageDef = await loadProto(file, loaderOptions);
+                const fileServices = this.getServiceByPackageName(packageDef, packageName);
+
+                if (fileServices && typeof fileServices === 'object') {
+                    Object.assign(services, fileServices);
+                }
+            } catch (error) {
+                const errorMsg = `Error loading proto file ${file}: ${error.message}`;
+                errors.push(errorMsg);
+                console.warn(errorMsg);
+            }
+        }
+
+        if (Object.keys(services).length === 0) {
+            throw new Error(`No services loaded successfully. Errors: ${errors.join('; ')}`);
+        }
+
+        this.protoDefinition = services;
+        return services;
+    }
+
+    /**
+     * Loads a single proto file
+     */
+    private async loadSingleProtoFile(
+        protoPath: string,
+        packageName: string,
+        loaderOptions: any,
+    ): Promise<any> {
+        try {
+            const packageDefinition = await loadProto(protoPath, loaderOptions);
+            const services = this.getServiceByPackageName(packageDefinition, packageName);
+
+            if (!services || (typeof services === 'object' && Object.keys(services).length === 0)) {
+                throw new Error(`No services found in package '${packageName}'`);
+            }
+
+            this.protoDefinition = services;
+            return services;
+        } catch (error) {
+            throw new Error(`Failed to load proto file ${protoPath}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Gets the loaded proto definition with validation
      */
     getProtoDefinition(): any {
+        if (!this.isLoaded || !this.protoDefinition) {
+            throw new Error('Proto files have not been loaded yet. Call load() first.');
+        }
+
         return this.protoDefinition;
     }
 
     /**
-     * Loads a specific service from the proto file(s)
-     * @param serviceName The service name
-     * @returns The service definition
+     * Loads a specific service from the proto file(s) with enhanced error handling
      */
     async loadService(serviceName: string): Promise<any> {
-        const { protoPath, package: packageName, loaderOptions } = this.options;
-
         try {
-            // Check if protoPath is a directory or a glob pattern
+            this.validateServiceName(serviceName);
+
+            const { protoPath, package: packageName, loaderOptions } = this.options;
+
             if (this.isDirectory(protoPath) || this.isGlobPattern(protoPath)) {
-                // Find all proto files in the directory/pattern
-                const protoFiles = await this.findProtoFiles(protoPath);
-
-                if (protoFiles.length === 0) {
-                    throw new Error(`No proto files found in ${protoPath}`);
-                }
-
-                // Try to load service from each file until found
-                for (const file of protoFiles) {
-                    try {
-                        const packageDef = await loadProto(file, loaderOptions);
-                        const service = getServiceByName(packageDef, packageName, serviceName);
-
-                        if (service) {
-                            return service;
-                        }
-                    } catch {
-                        // Continue to next file if service not found in this one
-                    }
-                }
-
-                throw new Error(`Service ${serviceName} not found in any proto file`);
+                return await this.loadServiceFromMultipleFiles(
+                    serviceName,
+                    protoPath,
+                    packageName,
+                    loaderOptions,
+                );
             } else {
-                // Direct file path
-                const packageDefinition = await loadProto(protoPath, loaderOptions);
-                const service = getServiceByName(packageDefinition, packageName, serviceName);
-                return service;
+                return await this.loadServiceFromSingleFile(
+                    serviceName,
+                    protoPath,
+                    packageName,
+                    loaderOptions,
+                );
             }
         } catch (error) {
             throw new Error(`Failed to load service ${serviceName}: ${error.message}`);
@@ -120,59 +209,162 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Checks if the path is a directory
-     * @param p Path to check
-     * @returns True if path is a directory
+     * Validates service name parameter
      */
-    private isDirectory(p: string): boolean {
+    private validateServiceName(serviceName: string): void {
+        if (!serviceName || typeof serviceName !== 'string') {
+            throw new Error('Service name is required and must be a string');
+        }
+
+        if (serviceName.trim().length === 0) {
+            throw new Error('Service name cannot be empty');
+        }
+    }
+
+    /**
+     * Loads service from multiple proto files
+     */
+    private async loadServiceFromMultipleFiles(
+        serviceName: string,
+        protoPath: string,
+        packageName: string,
+        loaderOptions: any,
+    ): Promise<any> {
+        const protoFiles = await this.findProtoFiles(protoPath);
+
+        if (protoFiles.length === 0) {
+            throw new Error(`No proto files found in ${protoPath}`);
+        }
+
+        const errors: string[] = [];
+
+        for (const file of protoFiles) {
+            try {
+                const packageDef = await loadProto(file, loaderOptions);
+                const service = getServiceByName(packageDef, packageName, serviceName);
+
+                if (service) {
+                    return service;
+                }
+            } catch (error) {
+                errors.push(`${file}: ${error.message}`);
+            }
+        }
+
+        throw new Error(
+            `Service ${serviceName} not found in any proto file. Errors: ${errors.join('; ')}`,
+        );
+    }
+
+    /**
+     * Loads service from single proto file
+     */
+    private async loadServiceFromSingleFile(
+        serviceName: string,
+        protoPath: string,
+        packageName: string,
+        loaderOptions: any,
+    ): Promise<any> {
         try {
-            return fs.statSync(p).isDirectory();
+            const packageDefinition = await loadProto(protoPath, loaderOptions);
+            const service = getServiceByName(packageDefinition, packageName, serviceName);
+
+            if (!service) {
+                throw new Error(`Service ${serviceName} not found in package ${packageName}`);
+            }
+
+            return service;
+        } catch (error) {
+            throw new Error(`Failed to load service from ${protoPath}: ${error.message}`);
+        }
+    }
+
+    /**
+     * Safely checks if path is a directory
+     */
+    private isDirectory(filePath: string): boolean {
+        try {
+            const stats = fs.statSync(filePath);
+            return stats.isDirectory();
         } catch {
             return false;
         }
     }
 
     /**
-     * Checks if the path is a glob pattern
-     * @param p Path to check
-     * @returns True if path contains glob pattern characters
+     * Checks if path contains glob pattern characters
      */
-    private isGlobPattern(p: string): boolean {
-        return /[*?{}[\]!]/.test(p);
+    private isGlobPattern(filePath: string): boolean {
+        return /[*?{}[\]!]/.test(filePath);
     }
 
     /**
-     * Finds all proto files in a directory or matching a glob pattern
-     * @param pathPattern Directory path or glob pattern
-     * @returns Array of file paths
+     * Finds proto files with enhanced error handling and validation
      */
     private async findProtoFiles(pathPattern: string): Promise<string[]> {
-        if (this.isDirectory(pathPattern)) {
-            // Convert directory path to glob pattern
-            pathPattern = path.join(pathPattern, '**', '*.proto');
-        }
+        try {
+            let pattern = pathPattern;
 
-        return glob(pathPattern);
+            // Convert directory to glob pattern
+            if (this.isDirectory(pathPattern)) {
+                pattern = path.join(pathPattern, '**', '*.proto');
+            }
+
+            const files = await glob(pattern, {
+                ignore: ['node_modules/**', '**/node_modules/**'],
+                absolute: true,
+                nodir: true,
+            });
+
+            // Validate files exist and are readable
+            const validFiles: string[] = [];
+
+            for (const file of files) {
+                try {
+                    fs.accessSync(file, fs.constants.R_OK);
+                    validFiles.push(file);
+                } catch (error) {
+                    console.warn(`Warning: Cannot read proto file ${file}: ${error.message}`);
+                }
+            }
+
+            return validFiles;
+        } catch (error) {
+            throw new Error(
+                `Error finding proto files with pattern ${pathPattern}: ${error.message}`,
+            );
+        }
     }
 
     /**
-     * Gets a service by package name
-     * @param proto The proto definition
-     * @param packageName The package name
-     * @returns The package
+     * Gets services by package name with enhanced error handling
      */
     private getServiceByPackageName(proto: any, packageName: string): any {
-        if (!packageName) {
-            return proto;
-        }
-
         try {
-            return packageName.split('.').reduce((acc, part) => {
-                if (!acc[part]) {
-                    return acc;
+            if (!proto) {
+                throw new Error('Proto definition is null or undefined');
+            }
+
+            if (!packageName) {
+                return proto;
+            }
+
+            const parts = packageName.split('.');
+            let current = proto;
+
+            for (const part of parts) {
+                if (!current || typeof current !== 'object') {
+                    throw new Error(`Invalid package structure at '${part}'`);
                 }
-                return acc[part];
-            }, proto);
+
+                if (!current[part]) {
+                    throw new Error(`Package part '${part}' not found`);
+                }
+
+                current = current[part];
+            }
+
+            return current;
         } catch (error) {
             throw new Error(`Failed to find package ${packageName}: ${error.message}`);
         }
