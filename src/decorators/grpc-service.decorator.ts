@@ -1,6 +1,8 @@
 import { SetMetadata } from '@nestjs/common';
+
 import { GRPC_SERVICE_METADATA } from '../constants';
-import { GrpcServiceOptions } from '../interfaces';
+
+import type { GrpcServiceOptions } from '../interfaces';
 
 /**
  * Decorator that marks a class as a gRPC service.

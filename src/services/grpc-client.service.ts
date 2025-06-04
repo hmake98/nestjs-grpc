@@ -1,8 +1,7 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Inject } from '@nestjs/common';
 import * as grpc from '@grpc/grpc-js';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { ProtoLoaderService } from './proto-loader.service';
+
 import { GRPC_OPTIONS } from '../constants';
 import { GrpcOptions, GrpcClientOptions } from '../interfaces';
 import {
@@ -10,6 +9,8 @@ import {
     createChannelOptions,
     getServiceMethods,
 } from '../utils/proto-utils';
+
+import { ProtoLoaderService } from './proto-loader.service';
 
 @Injectable()
 export class GrpcClientService implements OnModuleInit {

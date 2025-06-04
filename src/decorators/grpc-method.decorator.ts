@@ -1,5 +1,6 @@
 import { GRPC_METHOD_METADATA } from '../constants';
-import { GrpcMethodOptions } from '../interfaces';
+
+import type { GrpcMethodOptions } from '../interfaces';
 
 /**
  * Decorator that marks a method as a gRPC service method.

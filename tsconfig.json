@@ -3,34 +3,24 @@
         "module": "CommonJS",
         "moduleResolution": "Node",
         "declaration": true,
-        "declarationMap": true,
-        "removeComments": false,
+        "removeComments": true,
         "emitDecoratorMetadata": true,
         "experimentalDecorators": true,
         "allowSyntheticDefaultImports": true,
-        "esModuleInterop": true,
-        "target": "ES2021",
+        "target": "ES2020",
         "sourceMap": true,
         "outDir": "./dist",
         "baseUrl": "./",
-        "rootDir": "./",
         "incremental": true,
         "skipLibCheck": true,
-        "strict": false,
         "strictNullChecks": true,
-        "strictBindCallApply": true,
-        "strictFunctionTypes": true,
-        "strictPropertyInitialization": false,
-        "noImplicitAny": true,
-        "noImplicitThis": true,
-        "noFallthroughCasesInSwitch": true,
+        "noImplicitAny": false,
+        "strictBindCallApply": false,
         "forceConsistentCasingInFileNames": true,
-        "resolveJsonModule": true,
-        "paths": {
-            "src/*": ["./src/*"]
-        },
-        "lib": ["ES2021"]
+        "noFallthroughCasesInSwitch": true,
+        "esModuleInterop": true,
+        "resolveJsonModule": true
     },
     "include": ["src/**/*", "bin/**/*"],
-    "exclude": ["node_modules", "dist", "**/*.spec.ts", "**/__tests__/**/*"]
+    "exclude": ["node_modules", "dist"]
 }

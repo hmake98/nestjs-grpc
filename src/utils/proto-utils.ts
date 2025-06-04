@@ -1,9 +1,11 @@
-import * as path from 'path';
 import * as fs from 'fs';
-import * as protobuf from 'protobufjs';
-import * as protoLoader from '@grpc/proto-loader';
-import { Options } from '@grpc/proto-loader';
+import * as path from 'path';
+
 import * as grpc from '@grpc/grpc-js';
+import * as protoLoader from '@grpc/proto-loader';
+import * as protobuf from 'protobufjs';
+
+import type { Options } from '@grpc/proto-loader';
 
 /**
  * Default options for proto loading

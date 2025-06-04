@@ -39,6 +39,45 @@ export interface TypeOptions {
 }
 
 /**
+ * Converts snake_case to camelCase
+ * @param str The snake_case string
+ * @returns The camelCase string
+ */
+export function snakeToCamel(str: string): string {
+    return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+/**
+ * Converts PascalCase to camelCase
+ * @param str The PascalCase string
+ * @returns The camelCase string
+ */
+export function pascalToCamel(str: string): string {
+    return str.charAt(0).toLowerCase() + str.slice(1);
+}
+
+/**
+ * Formats a field name according to TypeScript conventions
+ * @param fieldName The original field name
+ * @returns The formatted field name in camelCase
+ */
+export function formatFieldName(fieldName: string): string {
+    // Always convert snake_case to camelCase
+    return snakeToCamel(fieldName);
+}
+
+/**
+ * Formats a method name according to TypeScript conventions
+ * @param methodName The original method name
+ * @returns The formatted method name in camelCase
+ */
+export function formatMethodName(methodName: string): string {
+    // Always convert snake_case to camelCase and ensure it starts with lowercase
+    const camelCase = snakeToCamel(methodName);
+    return pascalToCamel(camelCase);
+}
+
+/**
  * Maps a protobuf type to a TypeScript type
  * @param type The protobuf type
  * @param isRepeated Whether the field is repeated
@@ -66,7 +105,9 @@ export function getEnumDefinition(enumType: protobuf.Enum, options?: TypeOptions
     definition += `export enum ${enumType.name} {\n`;
 
     Object.entries(enumType.values).forEach(([key, value]) => {
-        definition += `  ${key} = ${value},\n`;
+        // Always convert enum key to camelCase
+        const formattedKey = formatFieldName(key);
+        definition += `  ${formattedKey} = ${value},\n`;
     });
 
     definition += '}\n';
@@ -100,9 +141,17 @@ export function getMessageDefinition(messageType: protobuf.Type, options?: TypeO
             definition += `  /**\n   * ${field.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
         }
 
+        // Always format field name (convert snake_case to camelCase)
+        const fieldName = formatFieldName(field.name);
         const fieldType = mapProtoTypeToTs(field.type, field.repeated);
         const isOptional = !field.required;
-        definition += `  ${field.name}${isOptional ? '?' : ''}: ${fieldType};\n`;
+
+        // Add original field name as comment if it was converted
+        if (options?.includeComments && fieldName !== field.name) {
+            definition += `  /** Original proto field: ${field.name} */\n`;
+        }
+
+        definition += `  ${fieldName}${isOptional ? '?' : ''}: ${fieldType};\n`;
     });
 
     definition += '}\n';
@@ -134,16 +183,24 @@ export function getServiceClientDefinition(
             definition += `  /**\n   * ${method.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
         }
 
-        // Convert method name to camelCase
-        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
+        // Always format method name (convert snake_case to camelCase and ensure lowercase start)
+        const methodName = formatMethodName(method.name);
         const inputType = method.requestType.split('.').pop();
         const outputType = method.responseType.split('.').pop();
 
+        // Add original method name as comment if it was converted
+        if (
+            options?.includeComments &&
+            methodName !== method.name.charAt(0).toLowerCase() + method.name.slice(1)
+        ) {
+            definition += `  /** Original proto method: ${method.name} */\n`;
+        }
+
         // Handle streaming methods
         if (method.responseStream) {
-            definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
+            definition += `  ${methodName}(request: ${inputType}, metadata?: any): Observable<${outputType}>;\n`;
         } else {
-            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}>;\n`;
+            definition += `  ${methodName}(request: ${inputType}, metadata?: any): Observable<${outputType}>;\n`;
         }
     });
 
@@ -168,7 +225,7 @@ export function getServiceInterfaceDefinition(
         definition += `/**\n * Controller interface for ${serviceType.name} service\n */\n`;
     }
 
-    definition += `export interface ${serviceType.name}Controller {\n`;
+    definition += `export interface ${serviceType.name}Interface {\n`;
 
     serviceType.methodsArray.forEach(method => {
         // Add method comment if available and comments are enabled
@@ -176,16 +233,24 @@ export function getServiceInterfaceDefinition(
             definition += `  /**\n   * ${method.comment.replace(/\n/g, '\n   * ')}\n   */\n`;
         }
 
-        // Convert method name to camelCase
-        const methodName = method.name.charAt(0).toLowerCase() + method.name.slice(1);
+        // Always format method name (convert snake_case to camelCase and ensure lowercase start)
+        const methodName = formatMethodName(method.name);
         const inputType = method.requestType.split('.').pop();
         const outputType = method.responseType.split('.').pop();
+
+        // Add original method name as comment if it was converted
+        if (
+            options?.includeComments &&
+            methodName !== method.name.charAt(0).toLowerCase() + method.name.slice(1)
+        ) {
+            definition += `  /** Original proto method: ${method.name} */\n`;
+        }
 
         // Handle streaming methods
         if (method.responseStream) {
             definition += `  ${methodName}(request: ${inputType}): Observable<${outputType}>;\n`;
         } else {
-            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}>;\n`;
+            definition += `  ${methodName}(request: ${inputType}): Promise<${outputType}> | Observable<${outputType}>;\n`;
         }
     });
 
@@ -200,7 +265,8 @@ export function getServiceInterfaceDefinition(
  * @returns The generated TypeScript definitions
  */
 export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptions): string {
-    let typeDefinitions = '// This file is auto-generated by nestjs-grpc\n\n';
+    let typeDefinitions = '// This file is auto-generated by nestjs-grpc\n';
+    typeDefinitions += '// Field names have been converted from snake_case to camelCase\n\n';
     typeDefinitions += "import { Observable } from 'rxjs';\n\n";
 
     // Process all nested types recursively

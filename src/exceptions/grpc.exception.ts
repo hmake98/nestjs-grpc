@@ -1,7 +1,9 @@
-import { RpcException } from '@nestjs/microservices';
-import { GrpcErrorCode } from '../constants';
 import { Metadata } from '@grpc/grpc-js';
-import { GrpcExceptionOptions } from '../interfaces';
+import { RpcException } from '@nestjs/microservices';
+
+import { GrpcErrorCode } from '../constants';
+
+import type { GrpcExceptionOptions } from '../interfaces';
 
 /**
  * gRPC-specific RPC exception with enhanced metadata support

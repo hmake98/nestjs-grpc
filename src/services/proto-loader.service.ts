@@ -1,8 +1,9 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Inject } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { glob } from 'glob';
+
 import { GRPC_OPTIONS } from '../constants';
 import { GrpcOptions } from '../interfaces';
 import { loadProto, getServiceByName } from '../utils/proto-utils';

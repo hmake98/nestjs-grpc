@@ -1,9 +1,12 @@
 import { existsSync, statSync, mkdirSync, writeFileSync } from 'fs';
 import { dirname, basename, join } from 'path';
+
 import { globSync } from 'glob';
 import * as protobuf from 'protobufjs';
+
 import { generateTypeDefinitions } from 'src/utils';
-import { GenerateCommandOptions } from '../interfaces';
+
+import type { GenerateCommandOptions } from '../interfaces';
 
 /**
  * Command to generate TypeScript definitions from proto files
