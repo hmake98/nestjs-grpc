@@ -1,38 +1,59 @@
 #!/usr/bin/env node
 
-// Streamlined CLI binary with better error handling and validation
+/**
+ * NestJS gRPC CLI Binary
+ * This file is the entry point for the nestjs-grpc command line tool
+ */
+
 const fs = require('fs');
 const path = require('path');
 
-function validateEnvironment() {
-    const distPath = path.join(__dirname, '..', 'dist');
-    const cliPath = path.join(distPath, 'cli', 'cli.js');
+function findCliModule() {
+    // Possible locations for the CLI module
+    const possiblePaths = [
+        path.join(__dirname, '..', 'cli', 'cli.js'),           // dist/cli/cli.js
+        path.join(__dirname, '..', 'index.js'),                // dist/index.js
+    ];
 
-    if (!fs.existsSync(distPath)) {
-        console.error('Error: Package not built. Run "npm run build" first.');
-        process.exit(1);
+    for (const testPath of possiblePaths) {
+        if (fs.existsSync(testPath)) {
+            return testPath;
+        }
     }
 
-    if (!fs.existsSync(cliPath)) {
-        console.error('Error: CLI module not found. Run "npm run build" first.');
-        process.exit(1);
-    }
-
-    return cliPath;
+    return null;
 }
 
-function startCli() {
+function main() {
     try {
-        const cliPath = validateEnvironment();
+        const cliPath = findCliModule();
+
+        if (!cliPath) {
+            console.error('Error: CLI module not found.');
+            console.error('Please ensure the package is properly built with "npm run build"');
+            console.error('');
+            console.error('If you are developing this package locally:');
+            console.error('  1. Run: npm run build');
+            console.error('  2. Run: npm link');
+            console.error('  3. Try the command again');
+            process.exit(1);
+        }
+
+        // Import and run the CLI
         require(cliPath);
     } catch (error) {
-        console.error('Fatal error:', error.message);
-        console.error('Please reinstall the package or run "npm run build"');
+        console.error('Fatal error starting CLI:', error.message);
+        console.error('');
+        console.error('Debug information:');
+        console.error('  Node version:', process.version);
+        console.error('  Platform:', process.platform);
+        console.error('  Working directory:', process.cwd());
+        console.error('  CLI binary location:', __filename);
         process.exit(1);
     }
 }
 
-// Graceful error handling for uncaught exceptions
+// Handle uncaught errors gracefully
 process.on('uncaughtException', (error) => {
     console.error('Uncaught exception:', error.message);
     process.exit(1);
@@ -43,4 +64,5 @@ process.on('unhandledRejection', (reason) => {
     process.exit(1);
 });
 
-startCli();
+// Start the CLI
+main();
