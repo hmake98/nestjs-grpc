@@ -16,7 +16,7 @@ try {
     const packagePath = join(__dirname, '..', '..', 'package.json');
     const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
     packageVersion = packageJson.version || packageVersion;
-} catch (error) {
+} catch {
     // Fallback to environment variable or keep default
     packageVersion = process.env.npm_package_version || packageVersion;
 }
