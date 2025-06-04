@@ -1,23 +1,27 @@
 // Main module
 export * from './grpc.module';
 
-// Decorators
-export * from './decorators';
+// Constants
+export { GrpcErrorCode } from './constants';
 
-// Services
-export * from './services';
+// Decorators
+export * from './decorators/grpc-method.decorator';
+export * from './decorators/grpc-service.decorator';
+
+// Exceptions
+export * from './exceptions/grpc.exception';
+export * from './exceptions/grpc.exception-filter';
 
 // Interfaces
 export * from './interfaces';
 
-// Exceptions
-export * from './exceptions';
-
-// Constants
-export { GrpcErrorCode } from './constants';
+// Services
+export * from './services/grpc-client.service';
+export * from './services/proto-loader.service';
 
 // Utils
-export * from './utils';
+export * from './utils/proto-utils';
+export * from './utils/type-utils';
 
-// Dashboard
-export * from './dashboard';
+// CLI commands
+export * from './commands/generate.command';

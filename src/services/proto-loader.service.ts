@@ -1,19 +1,25 @@
-import { Injectable } from '@nestjs/common';
-import { Inject } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
+
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { glob } from 'glob';
-import { GRPC_OPTIONS, GRPC_LOGGER } from '../constants';
-import { GrpcOptions } from '../interfaces/grpc-options.interface';
-import { GrpcLogger } from '../interfaces/logger.interface';
+
+import { GRPC_OPTIONS } from '../constants';
+import { GrpcOptions } from '../interfaces';
 import { loadProto, getServiceByName } from '../utils/proto-utils';
 
 @Injectable()
-export class ProtoLoaderService {
-    constructor(
-        @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
-        @Inject(GRPC_LOGGER) private readonly logger: GrpcLogger,
-    ) {}
+export class ProtoLoaderService implements OnModuleInit {
+    private protoDefinition: any;
+
+    constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {}
+
+    /**
+     * Initialize the service on module initialization
+     */
+    async onModuleInit(): Promise<void> {
+        await this.load();
+    }
 
     /**
      * Loads the proto file(s) and returns the package definition
@@ -21,8 +27,6 @@ export class ProtoLoaderService {
      */
     async load(): Promise<any> {
         const { protoPath, package: packageName, loaderOptions } = this.options;
-
-        this.logger.info(`Loading proto files from: ${protoPath}`, 'ProtoLoaderService');
 
         try {
             // Check if protoPath is a directory or a glob pattern
@@ -34,52 +38,41 @@ export class ProtoLoaderService {
                     throw new Error(`No proto files found in ${protoPath}`);
                 }
 
-                this.logger.debug(`Found ${protoFiles.length} proto file(s)`, 'ProtoLoaderService');
-
                 // Load all found proto files
                 const services = {};
                 for (const file of protoFiles) {
                     try {
-                        this.logger.debug(`Loading proto file: ${file}`, 'ProtoLoaderService');
                         const packageDef = await loadProto(file, loaderOptions);
                         const fileServices = this.getServiceByPackageName(packageDef, packageName);
 
                         // Merge services from multiple files
                         Object.assign(services, fileServices);
                     } catch (fileError) {
-                        this.logger.warn(
-                            `Error loading proto file ${file}: ${fileError.message}`,
-                            'ProtoLoaderService',
-                        );
+                        console.warn(`Error loading proto file ${file}: ${fileError.message}`);
                     }
                 }
 
-                this.logger.debug(
-                    `Successfully loaded proto files with package: ${packageName || 'all'}`,
-                    'ProtoLoaderService',
-                );
-
+                this.protoDefinition = services;
                 return services;
             } else {
                 // Direct file path
                 const packageDefinition = await loadProto(protoPath, loaderOptions);
                 const services = this.getServiceByPackageName(packageDefinition, packageName);
 
-                this.logger.debug(
-                    `Successfully loaded proto file with package: ${packageName || 'all'}`,
-                    'ProtoLoaderService',
-                );
-
+                this.protoDefinition = services;
                 return services;
             }
         } catch (error) {
-            this.logger.error(
-                `Failed to load proto file(s): ${error.message}`,
-                'ProtoLoaderService',
-                error.stack,
-            );
             throw new Error(`Failed to load proto file(s): ${error.message}`);
         }
+    }
+
+    /**
+     * Gets the loaded proto definition
+     * @returns The proto definition
+     */
+    getProtoDefinition(): any {
+        return this.protoDefinition;
     }
 
     /**
@@ -89,11 +82,6 @@ export class ProtoLoaderService {
      */
     async loadService(serviceName: string): Promise<any> {
         const { protoPath, package: packageName, loaderOptions } = this.options;
-
-        this.logger.info(
-            `Loading service ${serviceName} from proto files in: ${protoPath}`,
-            'ProtoLoaderService',
-        );
 
         try {
             // Check if protoPath is a directory or a glob pattern
@@ -112,10 +100,6 @@ export class ProtoLoaderService {
                         const service = getServiceByName(packageDef, packageName, serviceName);
 
                         if (service) {
-                            this.logger.debug(
-                                `Successfully loaded service: ${serviceName} from ${file}`,
-                                'ProtoLoaderService',
-                            );
                             return service;
                         }
                     } catch {
@@ -128,20 +112,9 @@ export class ProtoLoaderService {
                 // Direct file path
                 const packageDefinition = await loadProto(protoPath, loaderOptions);
                 const service = getServiceByName(packageDefinition, packageName, serviceName);
-
-                this.logger.debug(
-                    `Successfully loaded service: ${serviceName}`,
-                    'ProtoLoaderService',
-                );
-
                 return service;
             }
         } catch (error) {
-            this.logger.error(
-                `Failed to load service ${serviceName}: ${error.message}`,
-                'ProtoLoaderService',
-                error.stack,
-            );
             throw new Error(`Failed to load service ${serviceName}: ${error.message}`);
         }
     }
@@ -190,34 +163,17 @@ export class ProtoLoaderService {
      */
     private getServiceByPackageName(proto: any, packageName: string): any {
         if (!packageName) {
-            this.logger.verbose(
-                'No package name provided, returning full proto definition',
-                'ProtoLoaderService',
-            );
             return proto;
         }
 
         try {
-            this.logger.verbose(
-                `Finding package ${packageName} in proto definition`,
-                'ProtoLoaderService',
-            );
-
             return packageName.split('.').reduce((acc, part) => {
                 if (!acc[part]) {
-                    this.logger.warn(
-                        `Package part ${part} not found, returning current level`,
-                        'ProtoLoaderService',
-                    );
                     return acc;
                 }
                 return acc[part];
             }, proto);
         } catch (error) {
-            this.logger.error(
-                `Failed to find package ${packageName}: ${error.message}`,
-                'ProtoLoaderService',
-            );
             throw new Error(`Failed to find package ${packageName}: ${error.message}`);
         }
     }

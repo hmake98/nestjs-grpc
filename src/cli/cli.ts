@@ -1,19 +1,24 @@
 #!/usr/bin/env node
-import { Command } from 'commander';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import process from 'process';
-import { generateCommand } from './commands';
 
-// Get package version using a more compatible approach
-let packageVersion = '0.1.0';
+import { Command } from 'commander';
+
+import { generateCommand } from '../commands';
+
+// Get package version - simple approach that works with CommonJS compilation
+let packageVersion = '1.1.3'; // Default fallback to current version
+
 try {
-    // We'll use process.cwd() which is safe across module systems
-    const packageJson = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
-    packageVersion = packageJson.version || '0.1.0';
-} catch {
-    // Fallback to env var if available
-    packageVersion = process.env.npm_package_version || '0.1.0';
+    // When compiled to CommonJS, __dirname will be available
+    // Go up two levels: from dist/cli to root
+    const packagePath = join(__dirname, '..', '..', 'package.json');
+    const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
+    packageVersion = packageJson.version || packageVersion;
+} catch (error) {
+    // Fallback to environment variable or keep default
+    packageVersion = process.env.npm_package_version || packageVersion;
 }
 
 const program = new Command();
