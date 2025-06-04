@@ -3,12 +3,29 @@ import { APP_FILTER, DiscoveryModule } from '@nestjs/core';
 
 import { GRPC_OPTIONS } from './constants';
 import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
-import { GrpcOptions, GrpcModuleAsyncOptions } from './interfaces';
+import { GrpcOptions, GrpcModuleAsyncOptions, GrpcOptionsFactory } from './interfaces';
 import { GrpcClientService } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
 
 /**
- * NestJS module for gRPC service integration
+ * Simple validation for gRPC options
+ */
+function validateGrpcOptions(options: any): void {
+    if (!options || typeof options !== 'object') {
+        throw new Error('gRPC options must be a valid object');
+    }
+
+    if (!options.protoPath || typeof options.protoPath !== 'string') {
+        throw new Error('protoPath is required and must be a string');
+    }
+
+    if (!options.package || typeof options.package !== 'string') {
+        throw new Error('package is required and must be a string');
+    }
+}
+
+/**
+ * Enhanced NestJS module for gRPC service integration
  */
 @Global()
 @Module({
@@ -21,25 +38,31 @@ export class GrpcModule {
      * @returns The dynamic module
      */
     static forRoot(options: GrpcOptions): DynamicModule {
-        const providers: Provider[] = [
-            {
-                provide: GRPC_OPTIONS,
-                useValue: options,
-            },
-            ProtoLoaderService,
-            GrpcClientService,
-            {
-                provide: APP_FILTER,
-                useClass: GrpcExceptionFilter,
-            },
-        ];
+        try {
+            validateGrpcOptions(options);
 
-        return {
-            module: GrpcModule,
-            imports: [DiscoveryModule],
-            providers,
-            exports: [GrpcClientService, GRPC_OPTIONS],
-        };
+            const providers: Provider[] = [
+                {
+                    provide: GRPC_OPTIONS,
+                    useValue: options,
+                },
+                ProtoLoaderService,
+                GrpcClientService,
+                {
+                    provide: APP_FILTER,
+                    useClass: GrpcExceptionFilter,
+                },
+            ];
+
+            return {
+                module: GrpcModule,
+                imports: [DiscoveryModule],
+                providers,
+                exports: [GrpcClientService, GRPC_OPTIONS],
+            };
+        } catch (error) {
+            throw new Error(`Failed to configure GrpcModule: ${error.message}`);
+        }
     }
 
     /**
@@ -48,25 +71,82 @@ export class GrpcModule {
      * @returns The dynamic module
      */
     static forRootAsync(options: GrpcModuleAsyncOptions): DynamicModule {
-        const providers: Provider[] = [
-            {
-                provide: GRPC_OPTIONS,
-                useFactory: options.useFactory,
-                inject: options.inject || [],
-            },
-            ProtoLoaderService,
-            GrpcClientService,
-            {
-                provide: APP_FILTER,
-                useClass: GrpcExceptionFilter,
-            },
-        ];
+        try {
+            if (!options || typeof options !== 'object') {
+                throw new Error('Async options must be a valid object');
+            }
 
-        return {
-            module: GrpcModule,
-            imports: [DiscoveryModule],
-            providers,
-            exports: [GrpcClientService, GRPC_OPTIONS],
-        };
+            const providers: Provider[] = [
+                ...this.createAsyncProviders(options),
+                ProtoLoaderService,
+                GrpcClientService,
+                {
+                    provide: APP_FILTER,
+                    useClass: GrpcExceptionFilter,
+                },
+            ];
+
+            return {
+                module: GrpcModule,
+                imports: [DiscoveryModule],
+                providers,
+                exports: [GrpcClientService, GRPC_OPTIONS],
+            };
+        } catch (error) {
+            throw new Error(`Failed to configure GrpcModule async: ${error.message}`);
+        }
+    }
+
+    /**
+     * Creates async providers based on the configuration type
+     */
+    private static createAsyncProviders(options: GrpcModuleAsyncOptions): Provider[] {
+        if (options.useFactory) {
+            return [
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (...args: any[]) => {
+                        const grpcOptions = await options.useFactory!(...args);
+                        validateGrpcOptions(grpcOptions);
+                        return grpcOptions;
+                    },
+                    inject: options.inject || [],
+                },
+            ];
+        }
+
+        if (options.useClass) {
+            return [
+                {
+                    provide: options.useClass,
+                    useClass: options.useClass,
+                },
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcOptionsFactory) => {
+                        const grpcOptions = await optionsFactory.createGrpcOptions();
+                        validateGrpcOptions(grpcOptions);
+                        return grpcOptions;
+                    },
+                    inject: [options.useClass],
+                },
+            ];
+        }
+
+        if (options.useExisting) {
+            return [
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcOptionsFactory) => {
+                        const grpcOptions = await optionsFactory.createGrpcOptions();
+                        validateGrpcOptions(grpcOptions);
+                        return grpcOptions;
+                    },
+                    inject: [options.useExisting],
+                },
+            ];
+        }
+
+        throw new Error('One of useFactory, useClass, or useExisting must be provided');
     }
 }
