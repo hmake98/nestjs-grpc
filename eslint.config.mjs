@@ -1,12 +1,50 @@
 import eslintConfigPrettier from 'eslint-config-prettier';
-import tsEsLintPlugin from '@typescript-eslint/eslint-plugin';
+import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
-import tsEslint from 'typescript-eslint';
+import { configs as tsEslintConfigs } from 'typescript-eslint';
 
-const rules = tsEslint.configs.recommended
+const baseTsRules = tsEslintConfigs.recommended
     .map(config => config.rules)
-    .filter(rules => rules !== undefined)
-    .reduce((a, b) => ({ ...b, ...a }), {});
+    .filter(Boolean)
+    .reduce((a, b) => ({ ...a, ...b }), {});
+
+// Custom rule overrides
+const customTsRules = {
+    ...baseTsRules,
+    '@typescript-eslint/no-explicit-any': 'off',
+    'no-unused-vars': 'off',
+    '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+            args: 'all',
+            argsIgnorePattern: '^_',
+            caughtErrors: 'all',
+            caughtErrorsIgnorePattern: '^_',
+            destructuredArrayIgnorePattern: '^_',
+            varsIgnorePattern: '^_',
+            ignoreRestSiblings: true,
+        },
+    ],
+};
+
+const baseTsConfig = {
+    languageOptions: {
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        parser: tsParser,
+        parserOptions: {
+            project: 'tsconfig.json',
+            tsconfigRootDir: '.',
+        },
+    },
+    linterOptions: {
+        reportUnusedDisableDirectives: true,
+    },
+    plugins: {
+        '@typescript-eslint': tsEslintPlugin,
+    },
+    rules: customTsRules,
+};
 
 export default [
     eslintConfigPrettier,
@@ -21,77 +59,21 @@ export default [
         ],
     },
     {
-        name: 'ts/default',
+        name: 'ts/src',
         files: ['src/**/*.ts'],
-        languageOptions: {
-            ecmaVersion: 'latest',
-            sourceType: 'module',
-            parser: tsParser,
-            parserOptions: {
-                project: 'tsconfig.json',
-                tsconfigRootDir: '.',
-            },
-        },
+        ...baseTsConfig,
         linterOptions: {
+            ...baseTsConfig.linterOptions,
             noInlineConfig: true,
-            reportUnusedDisableDirectives: true,
-        },
-        plugins: {
-            '@typescript-eslint': tsEsLintPlugin,
-        },
-        rules: {
-            ...rules,
-            '@typescript-eslint/no-explicit-any': 'off',
-            'no-unused-vars': 'off',
-            '@typescript-eslint/no-unused-vars': [
-                'warn',
-                {
-                    args: 'all',
-                    argsIgnorePattern: '^_',
-                    caughtErrors: 'all',
-                    caughtErrorsIgnorePattern: '^_',
-                    destructuredArrayIgnorePattern: '^_',
-                    varsIgnorePattern: '^_',
-                    ignoreRestSiblings: true,
-                },
-            ],
         },
     },
     {
         name: 'ts/test',
         files: ['test/**/*.spec.ts'],
-        languageOptions: {
-            ecmaVersion: 'latest',
-            sourceType: 'module',
-            parser: tsParser,
-            parserOptions: {
-                project: 'tsconfig.json',
-                tsconfigRootDir: '.',
-            },
-        },
+        ...baseTsConfig,
         linterOptions: {
+            ...baseTsConfig.linterOptions,
             noInlineConfig: false,
-            reportUnusedDisableDirectives: true,
-        },
-        plugins: {
-            '@typescript-eslint': tsEsLintPlugin,
-        },
-        rules: {
-            ...rules,
-            '@typescript-eslint/no-explicit-any': 'off',
-            'no-unused-vars': 'off',
-            '@typescript-eslint/no-unused-vars': [
-                'warn',
-                {
-                    args: 'all',
-                    argsIgnorePattern: '^_',
-                    caughtErrors: 'all',
-                    caughtErrorsIgnorePattern: '^_',
-                    destructuredArrayIgnorePattern: '^_',
-                    varsIgnorePattern: '^_',
-                    ignoreRestSiblings: true,
-                },
-            ],
         },
     },
 ];
