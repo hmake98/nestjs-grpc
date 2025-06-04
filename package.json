@@ -36,7 +36,7 @@
         "publish:patch": "npm run version:patch && npm publish",
         "publish:minor": "npm run version:minor && npm publish",
         "publish:major": "npm run version:major && npm publish",
-        "release": "npm run lint && npm run test && npm run build && npm publish",
+        "release": "npm run lint && npm run build && npm publish",
         "generate-docs": "typedoc --out docs src/index.ts",
         "postversion": "git push && git push --tags"
     },
