@@ -11,8 +11,8 @@ const path = require('path');
 function findCliModule() {
     // Possible locations for the CLI module
     const possiblePaths = [
-        path.join(__dirname, '..', 'cli', 'cli.js'),           // dist/cli/cli.js
-        path.join(__dirname, '..', 'index.js'),                // dist/index.js
+        path.join(__dirname, '..', 'cli', 'cli.js'), // dist/cli/cli.js
+        path.join(__dirname, '..', 'index.js'), // dist/index.js
     ];
 
     for (const testPath of possiblePaths) {
@@ -54,12 +54,12 @@ function main() {
 }
 
 // Handle uncaught errors gracefully
-process.on('uncaughtException', (error) => {
+process.on('uncaughtException', error => {
     console.error('Uncaught exception:', error.message);
     process.exit(1);
 });
 
-process.on('unhandledRejection', (reason) => {
+process.on('unhandledRejection', reason => {
     console.error('Unhandled rejection:', reason);
     process.exit(1);
 });
