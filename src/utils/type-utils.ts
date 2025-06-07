@@ -280,17 +280,17 @@ export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptio
             }
 
             if (nested instanceof protobuf.Type) {
-                typeDefinitions += getMessageDefinition(nested, options) + '\n';
+                typeDefinitions += `${getMessageDefinition(nested, options)}\n`;
                 // Process nested messages
                 processNamespace(nested, fullName);
             } else if (nested instanceof protobuf.Service) {
                 // Only include client interface if explicitly enabled
                 if (options?.includeClientInterfaces !== false) {
-                    typeDefinitions += getServiceClientDefinition(nested, options) + '\n';
+                    typeDefinitions += `${getServiceClientDefinition(nested, options)}\n`;
                 }
-                typeDefinitions += getServiceInterfaceDefinition(nested, options) + '\n';
+                typeDefinitions += `${getServiceInterfaceDefinition(nested, options)}\n`;
             } else if (nested instanceof protobuf.Enum) {
-                typeDefinitions += getEnumDefinition(nested, options) + '\n';
+                typeDefinitions += `${getEnumDefinition(nested, options)}\n`;
             } else if (nested instanceof protobuf.Namespace) {
                 processNamespace(nested, fullName);
             }

@@ -11,7 +11,7 @@ import { loadProto, getServiceByName } from '../utils/proto-utils';
 @Injectable()
 export class ProtoLoaderService implements OnModuleInit {
     private protoDefinition: any = null;
-    private isLoaded: boolean = false;
+    private isLoaded = false;
     private loadingPromise: Promise<any> | null = null;
 
     constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {

@@ -330,7 +330,7 @@ export function createClientCredentials(
             throw new Error('certChain must be a Buffer');
         }
 
-        return grpc.credentials.createSsl(rootCerts || null, privateKey || null, certChain || null);
+        return grpc.credentials.createSsl(rootCerts ?? null, privateKey ?? null, certChain ?? null);
     } catch (error) {
         throw new Error(`Failed to create client credentials: ${error.message}`);
     }

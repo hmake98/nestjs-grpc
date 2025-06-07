@@ -23,8 +23,8 @@ export class GrpcException extends RpcException {
         super(opts.message);
 
         this.code = opts.code;
-        this.details = opts.details || null;
-        this.metadata = GrpcException.validateMetadata(opts.metadata || {});
+        this.details = opts.details ?? null;
+        this.metadata = GrpcException.validateMetadata(opts.metadata ?? {});
 
         // Override name to match the class name
         Object.defineProperty(this, 'name', { value: 'GrpcException' });
