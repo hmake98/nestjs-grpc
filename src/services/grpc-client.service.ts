@@ -16,6 +16,7 @@ interface CachedClient {
     client: any;
     createdAt: number;
     lastUsed: number;
+    config: string; // For cache key differentiation
 }
 
 @Injectable()
@@ -53,7 +54,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     /**
      * Initialize the service on module initialization
      */
-    async onModuleInit(): Promise<void> {
+    onModuleInit(): void {
         try {
             // Start cleanup interval for client cache
             this.cleanupInterval = setInterval(() => {
@@ -72,7 +73,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     /**
      * Cleanup resources on module destruction
      */
-    async onModuleDestroy(): Promise<void> {
+    onModuleDestroy(): void {
         try {
             // Clear cleanup interval
             if (this.cleanupInterval) {
@@ -130,13 +131,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Creates a gRPC client for a service with improved error handling
+     * Creates a gRPC client for a service with improved error handling and service-specific configuration
      */
     create<T>(serviceName: string, options?: Partial<GrpcClientOptions>): T {
         try {
             this.validateCreateParameters(serviceName, options);
 
-            const clientKey = this.getClientKey(serviceName, options?.url);
+            const clientOptions = this.mergeClientOptions(serviceName, options);
+            const clientKey = this.getClientKey(serviceName, clientOptions);
             const cachedClient = this.clients.get(clientKey);
 
             // Return cached client if available and not stale
@@ -147,7 +149,6 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
             // Create new client
             const serviceConstructor = this.getServiceConstructor(serviceName);
-            const clientOptions = this.mergeClientOptions(options);
             const client = this.createClient(serviceConstructor, clientOptions);
 
             // Cache the client
@@ -155,6 +156,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 client,
                 createdAt: Date.now(),
                 lastUsed: Date.now(),
+                config: this.getConfigHash(clientOptions),
             });
 
             return client as T;
@@ -162,6 +164,41 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             throw new Error(
                 `Failed to create gRPC client for service ${serviceName}: ${error.message}`,
             );
+        }
+    }
+
+    /**
+     * Creates a client with specific options for a service (used by decorators)
+     */
+    createClientForService<T>(serviceName: string, serviceOptions?: Partial<GrpcClientOptions>): T {
+        return this.create<T>(serviceName, serviceOptions);
+    }
+
+    /**
+     * Gets available services from the proto definition
+     */
+    getAvailableServices(): string[] {
+        try {
+            const protoServices = this.protoLoaderService.getProtoDefinition();
+            if (!protoServices) {
+                return [];
+            }
+            return this.getAvailableServicesRecursive(protoServices);
+        } catch (error) {
+            console.warn('Error getting available services:', error.message);
+            return [];
+        }
+    }
+
+    /**
+     * Checks if a service exists in the proto definition
+     */
+    hasService(serviceName: string): boolean {
+        try {
+            this.getServiceConstructor(serviceName);
+            return true;
+        } catch {
+            return false;
         }
     }
 
@@ -186,11 +223,33 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Gets a cache key for the client
+     * Gets a cache key for the client with configuration hash
      */
-    private getClientKey(serviceName: string, url?: string): string {
-        const serviceUrl = url ?? this.options.url ?? 'default';
-        return `${serviceName}:${serviceUrl}`;
+    private getClientKey(serviceName: string, options: GrpcClientOptions): string {
+        const configHash = this.getConfigHash(options);
+        return `${serviceName}:${configHash}`;
+    }
+
+    /**
+     * Generates a configuration hash for caching purposes
+     */
+    private getConfigHash(options: GrpcClientOptions): string {
+        const configString = JSON.stringify({
+            url: options.url,
+            secure: options.secure,
+            timeout: options.timeout,
+            maxRetries: options.maxRetries,
+            retryDelay: options.retryDelay,
+        });
+
+        // Simple hash function
+        let hash = 0;
+        for (let i = 0; i < configString.length; i++) {
+            const char = configString.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash.toString(36);
     }
 
     /**
@@ -224,7 +283,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }
 
             if (!serviceConstructor) {
-                const availableServices = this.getAvailableServices(protoServices);
+                const availableServices = this.getAvailableServicesRecursive(protoServices);
                 throw new Error(
                     `Service '${serviceName}' not found. Available services: ${availableServices.join(', ')}`,
                 );
@@ -290,7 +349,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     /**
      * Gets available services recursively with improved stability
      */
-    private getAvailableServices(obj: any, prefix = '', maxDepth = 5): string[] {
+    private getAvailableServicesRecursive(obj: any, prefix = '', maxDepth = 5): string[] {
         if (!obj || typeof obj !== 'object' || maxDepth <= 0) {
             return [];
         }
@@ -307,7 +366,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 if (typeof value === 'function') {
                     services.push(path);
                 } else if (typeof value === 'object' && value !== null) {
-                    const nestedServices = this.getAvailableServices(value, path, maxDepth - 1);
+                    const nestedServices = this.getAvailableServicesRecursive(
+                        value,
+                        path,
+                        maxDepth - 1,
+                    );
                     services.push(...nestedServices);
                 }
             }
@@ -319,11 +382,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     }
 
     /**
-     * Merges client options with defaults and validation
+     * Merges client options with defaults and service-specific configuration
      */
-    private mergeClientOptions(options?: Partial<GrpcClientOptions>): GrpcClientOptions {
+    private mergeClientOptions(
+        serviceName: string,
+        options?: Partial<GrpcClientOptions>,
+    ): GrpcClientOptions {
         const merged: GrpcClientOptions = {
-            service: options?.service ?? '',
+            service: options?.service ?? serviceName,
             package: options?.package ?? this.options.package,
             protoPath: options?.protoPath ?? this.options.protoPath,
             url: options?.url ?? this.options.url ?? 'localhost:50051',
@@ -334,7 +400,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             privateKey: options?.privateKey ?? this.options.privateKey,
             certChain: options?.certChain ?? this.options.certChain,
             timeout: Math.max(1000, Math.min(300000, options?.timeout ?? 30000)),
-            channelOptions: options?.channelOptions ?? {},
+            channelOptions: { ...this.options.loaderOptions, ...options?.channelOptions },
         };
 
         return merged;
@@ -385,7 +451,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             const methods = getServiceMethods(client.constructor);
 
             if (methods.length === 0) {
-                console.warn('No methods found for gRPC service');
+                console.warn(`No methods found for gRPC service ${options.service}`);
             }
 
             for (const methodName of methods) {
@@ -407,6 +473,19 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     wrappedClient[methodName] = this.wrapUnaryMethod(client, methodName, options);
                 }
             }
+
+            // Add utility methods
+            wrappedClient._getServiceName = () => options.service;
+            wrappedClient._getOptions = () => ({ ...options });
+            wrappedClient._close = () => {
+                try {
+                    if (client && typeof client.close === 'function') {
+                        client.close();
+                    }
+                } catch (error) {
+                    console.warn('Error closing client:', error.message);
+                }
+            };
 
             return wrappedClient;
         } catch (error) {
