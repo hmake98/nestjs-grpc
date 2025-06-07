@@ -97,7 +97,7 @@ function createTypeOptions(options: GenerateCommandOptions): any {
     return {
         useClasses: Boolean(options.classes),
         includeComments: options.comments !== false,
-        packageFilter: options.packageFilter || undefined,
+        packageFilter: options.packageFilter ?? undefined,
         includeClientInterfaces: !options.noClientInterfaces,
     };
 }
@@ -194,7 +194,7 @@ async function generateTypesForFile(
     protoFile: string,
     outputDir: string,
     typeOptions: any,
-    silent: boolean = false,
+    silent = false,
 ): Promise<void> {
     try {
         if (!silent) {

@@ -189,7 +189,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      * Gets a cache key for the client
      */
     private getClientKey(serviceName: string, url?: string): string {
-        const serviceUrl = url || this.options.url || 'default';
+        const serviceUrl = url ?? this.options.url ?? 'default';
         return `${serviceName}:${serviceUrl}`;
     }
 
@@ -323,18 +323,18 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     private mergeClientOptions(options?: Partial<GrpcClientOptions>): GrpcClientOptions {
         const merged: GrpcClientOptions = {
-            service: options?.service || '',
-            package: options?.package || this.options.package,
-            protoPath: options?.protoPath || this.options.protoPath,
-            url: options?.url || this.options.url || 'localhost:50051',
-            maxRetries: Math.max(0, Math.min(10, options?.maxRetries || 3)),
-            retryDelay: Math.max(100, Math.min(5000, options?.retryDelay || 1000)),
-            secure: Boolean(options?.secure || this.options.secure),
-            rootCerts: options?.rootCerts || this.options.rootCerts,
-            privateKey: options?.privateKey || this.options.privateKey,
-            certChain: options?.certChain || this.options.certChain,
-            timeout: Math.max(1000, Math.min(300000, options?.timeout || 30000)),
-            channelOptions: options?.channelOptions || {},
+            service: options?.service ?? '',
+            package: options?.package ?? this.options.package,
+            protoPath: options?.protoPath ?? this.options.protoPath,
+            url: options?.url ?? this.options.url ?? 'localhost:50051',
+            maxRetries: Math.max(0, Math.min(10, options?.maxRetries ?? 3)),
+            retryDelay: Math.max(100, Math.min(5000, options?.retryDelay ?? 1000)),
+            secure: Boolean(options?.secure ?? this.options.secure),
+            rootCerts: options?.rootCerts ?? this.options.rootCerts,
+            privateKey: options?.privateKey ?? this.options.privateKey,
+            certChain: options?.certChain ?? this.options.certChain,
+            timeout: Math.max(1000, Math.min(300000, options?.timeout ?? 30000)),
+            channelOptions: options?.channelOptions ?? {},
         };
 
         return merged;
@@ -426,7 +426,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             const methodDefinition = serviceConstructor.service.methods[methodName];
             return Boolean(
                 methodDefinition &&
-                    (methodDefinition.requestStream || methodDefinition.responseStream),
+                    (methodDefinition.requestStream ?? methodDefinition.responseStream),
             );
         } catch {
             return false;
@@ -448,7 +448,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         throw new Error('Request is required');
                     }
 
-                    const meta = metadata || new grpc.Metadata();
+                    const meta = metadata ?? new grpc.Metadata();
                     const deadline = this.getDeadline(options.timeout);
 
                     const call = client[methodName](
@@ -502,7 +502,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         throw new Error('Request is required for streaming method');
                     }
 
-                    const meta = metadata || new grpc.Metadata();
+                    const meta = metadata ?? new grpc.Metadata();
                     const deadline = this.getDeadline(options.timeout);
 
                     call = client[methodName](request, meta, { deadline });
@@ -574,7 +574,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     /**
      * Gets a deadline timestamp with validation
      */
-    private getDeadline(timeout: number = 30000): number {
+    private getDeadline(timeout = 30000): number {
         const validTimeout = Math.max(1000, Math.min(300000, timeout));
         return Date.now() + validTimeout;
     }

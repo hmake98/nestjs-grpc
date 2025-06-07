@@ -110,7 +110,7 @@ export class GrpcModule {
                         validateGrpcOptions(grpcOptions);
                         return grpcOptions;
                     },
-                    inject: options.inject || [],
+                    inject: options.inject ?? [],
                 },
             ];
         }

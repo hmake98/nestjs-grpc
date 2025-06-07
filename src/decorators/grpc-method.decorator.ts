@@ -10,13 +10,11 @@ export function GrpcMethod(methodNameOrOptions?: string | GrpcMethodOptions): Me
     const options: GrpcMethodOptions =
         typeof methodNameOrOptions === 'string'
             ? { methodName: methodNameOrOptions }
-            : methodNameOrOptions || {};
+            : (methodNameOrOptions ?? {});
 
     return (target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<any>) => {
         // If no method name is provided, use the method name
-        if (!options.methodName) {
-            options.methodName = key.toString();
-        }
+        options.methodName ??= key.toString();
 
         // Ensure metadata is applied to the prototype, not the constructor
         Reflect.defineMetadata(GRPC_METHOD_METADATA, options, target, key);

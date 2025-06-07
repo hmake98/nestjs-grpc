@@ -21,39 +21,23 @@
     },
     "homepage": "https://github.com/hmake98/nestjs-grpc#readme",
     "scripts": {
+        "build": "npm run clean && npm run compile && npm run copy-bin",
+        "build:watch": "npm run compile -- --watch",
         "clean": "rimraf dist",
         "compile": "tsc -p tsconfig.json",
         "copy-bin": "mkdir -p dist/bin && cp bin/nestjs-grpc.js dist/bin/ && chmod +x dist/bin/nestjs-grpc.js",
-        "build": "npm run clean && npm run compile && npm run copy-bin",
-        "build:watch": "npm run build && tsc -p tsconfig.json --watch",
+        "dev": "npm run build && npm link",
+        "docs": "typedoc --out docs src/index.ts",
+        "docs:serve": "npm run docs && npx http-server docs -p 8080 -o",
         "format": "prettier --write \"src/**/*.ts\" \"bin/**/*.js\"",
         "format:check": "prettier --check \"src/**/*.ts\" \"bin/**/*.js\"",
         "lint": "eslint \"src/**/*.ts\" --fix",
         "lint:check": "eslint \"src/**/*.ts\"",
-        "test": "echo \"Add tests here\" && exit 0",
-        "test:watch": "npm run test -- --watch",
-        "prepare": "npm run build",
-        "prepublishOnly": "npm run quality-check",
-        "quality-check": "npm run lint:check && npm run format:check && npm run test && npm run build",
-        "version:patch": "npm version patch --no-git-tag-version",
-        "version:minor": "npm version minor --no-git-tag-version",
-        "version:major": "npm version major --no-git-tag-version",
-        "git:add": "git add .",
-        "git:commit": "git commit -m \"chore: release v$npm_package_version\"",
-        "git:tag": "git tag v$npm_package_version",
-        "git:push": "git push && git push --tags",
-        "publish:patch": "npm run quality-check && npm run version:patch && npm run git:add && npm run git:commit && npm run git:tag && npm publish && npm run git:push",
-        "publish:minor": "npm run quality-check && npm run version:minor && npm run git:add && npm run git:commit && npm run git:tag && npm publish && npm run git:push",
-        "publish:major": "npm run quality-check && npm run version:major && npm run git:add && npm run git:commit && npm run git:tag && npm publish && npm run git:push",
-        "release": "npm run publish:patch",
-        "release:minor": "npm run publish:minor",
-        "release:major": "npm run publish:major",
-        "dev:setup": "npm install && npm run build && npm link",
-        "dev:clean": "npm unlink --global nestjs-grpc 2>/dev/null || true",
-        "docs": "typedoc --out docs src/index.ts",
-        "docs:serve": "npm run docs && npx http-server docs -p 8080 -o",
-        "check:binary": "node dist/bin/nestjs-grpc.js --version",
-        "validate": "npm run build && npm run check:binary && echo \"✅ Package validation successful\""
+        "prepack": "npm run build",
+        "prepublishOnly": "npm run test && npm run lint:check && npm run format:check",
+        "release": "npm run prepublishOnly && npm publish",
+        "test": "echo \"Tests will be added in future versions\" && exit 0",
+        "validate": "npm run build && node dist/bin/nestjs-grpc.js --version"
     },
     "keywords": [
         "nestjs",
@@ -68,6 +52,9 @@
     ],
     "author": "hmake98",
     "license": "MIT",
+    "engines": {
+        "node": ">=16.0.0"
+    },
     "dependencies": {
         "@grpc/grpc-js": "^1.13.3",
         "@grpc/proto-loader": "^0.7.15",
@@ -76,10 +63,10 @@
         "protobufjs": "^7.5.0"
     },
     "devDependencies": {
+        "@eslint/eslintrc": "^3.2.0",
         "@nestjs/common": "^11.0.20",
         "@nestjs/core": "^11.0.20",
         "@nestjs/microservices": "^11.0.20",
-        "@types/glob": "^8.1.0",
         "@types/node": "^22.14.1",
         "@typescript-eslint/eslint-plugin": "^8.15.0",
         "@typescript-eslint/parser": "^8.15.0",
@@ -92,11 +79,8 @@
         "reflect-metadata": "^0.2.2",
         "rimraf": "^6.0.1",
         "rxjs": "^7.8.2",
-        "ts-node": "^10.9.2",
-        "tsconfig-paths": "^4.2.0",
         "typedoc": "^0.25.12",
-        "typescript": "^5.5.4",
-        "typescript-eslint": "^8.15.0"
+        "typescript": "^5.5.4"
     },
     "peerDependencies": {
         "@nestjs/common": "^10.0.0 || ^11.0.0",
@@ -104,8 +88,5 @@
         "@nestjs/microservices": "^10.0.0 || ^11.0.0",
         "reflect-metadata": "^0.1.13 || ^0.2.0",
         "rxjs": "^7.0.0"
-    },
-    "engines": {
-        "node": ">=16.0.0"
     }
 }
