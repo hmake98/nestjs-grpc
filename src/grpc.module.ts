@@ -6,6 +6,8 @@ import {
     Type,
     Injectable,
     OnModuleInit,
+    Logger,
+    Inject,
 } from '@nestjs/common';
 import { APP_FILTER, DiscoveryModule, DiscoveryService, MetadataScanner } from '@nestjs/core';
 
@@ -48,13 +50,7 @@ function validateGrpcOptions(options: any): void {
 }
 
 /**
- * Global gRPC module for NestJS applications
- *
- * This module provides:
- * - Proto file loading and parsing
- * - gRPC client creation and management
- * - Controller and service discovery
- * - Global exception handling for gRPC
+ * Global gRPC module for NestJS applications with simple logging
  */
 @Global()
 @Module({
@@ -63,18 +59,6 @@ function validateGrpcOptions(options: any): void {
 export class GrpcModule {
     /**
      * Configure the gRPC module with static options
-     *
-     * @param options Static gRPC configuration
-     * @returns Dynamic module configuration
-     *
-     * @example
-     * ```typescript
-     * GrpcModule.forRoot({
-     *   protoPath: join(__dirname, 'proto/service.proto'),
-     *   package: 'myservice',
-     *   url: 'localhost:50051'
-     * })
-     * ```
      */
     static forRoot(options: GrpcOptions): DynamicModule {
         validateGrpcOptions(options);
@@ -104,21 +88,6 @@ export class GrpcModule {
 
     /**
      * Configure the gRPC module with async options
-     *
-     * @param options Async gRPC configuration
-     * @returns Dynamic module configuration
-     *
-     * @example
-     * ```typescript
-     * GrpcModule.forRootAsync({
-     *   inject: [ConfigService],
-     *   useFactory: (config: ConfigService) => ({
-     *     protoPath: config.get('GRPC_PROTO_PATH'),
-     *     package: config.get('GRPC_PACKAGE'),
-     *     url: config.get('GRPC_URL')
-     *   })
-     * })
-     * ```
      */
     static forRootAsync(options: GrpcModuleAsyncOptions): DynamicModule {
         if (!options || typeof options !== 'object') {
@@ -197,20 +166,18 @@ export class GrpcModule {
 
 /**
  * Service responsible for discovering and registering gRPC controllers and services
- *
- * This service automatically discovers:
- * - Classes decorated with @GrpcController
- * - Classes decorated with @GrpcService
- * - Methods decorated with @GrpcMethod
+ * with simple logging for debugging
  */
 @Injectable()
 export class GrpcRegistryService implements OnModuleInit {
+    private readonly logger = new Logger('GrpcRegistry');
     private readonly controllers = new Map<string, ControllerMetadata>();
     private readonly serviceClients = new Map<string, ServiceClientMetadata>();
 
     constructor(
         private readonly discoveryService: DiscoveryService,
         private readonly metadataScanner: MetadataScanner,
+        @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
     ) {}
 
     /**
@@ -218,13 +185,23 @@ export class GrpcRegistryService implements OnModuleInit {
      */
     async onModuleInit(): Promise<void> {
         try {
+            this.logger.log('Starting gRPC service discovery...');
+
             await this.discoverControllers();
             await this.discoverServiceClients();
 
-            console.log(`Discovered ${this.controllers.size} gRPC controllers`);
-            console.log(`Discovered ${this.serviceClients.size} gRPC service clients`);
+            this.logger.log(
+                `Discovered ${this.controllers.size} controllers, ${this.serviceClients.size} service clients`,
+            );
+
+            if (this.options.logging?.debug) {
+                this.logger.debug('Controllers:', Array.from(this.controllers.keys()));
+                this.logger.debug('Service clients:', Array.from(this.serviceClients.keys()));
+            }
         } catch (error) {
-            console.error('Failed to initialize GrpcRegistryService:', error.message);
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.error('Failed to initialize GrpcRegistryService:', error.message);
+            }
             throw error;
         }
     }
@@ -274,9 +251,13 @@ export class GrpcRegistryService implements OnModuleInit {
                 const controllerClass = wrapper.metatype as Type<any>;
                 const metadata = this.extractControllerMetadata(controllerClass);
                 this.controllers.set(metadata.serviceName, metadata);
+
+                this.logger.log(`Registered controller: ${metadata.serviceName}`);
             } catch (error) {
                 const className = wrapper.metatype?.name ?? 'Unknown';
-                console.error(`Failed to register gRPC controller ${className}:`, error.message);
+                if (this.options.logging?.logErrors !== false) {
+                    this.logger.error(`Failed to register controller ${className}:`, error.message);
+                }
             }
         }
     }
@@ -303,13 +284,16 @@ export class GrpcRegistryService implements OnModuleInit {
 
                 if (metadata) {
                     this.serviceClients.set(metadata.serviceName, metadata);
+                    this.logger.log(`Registered service client: ${metadata.serviceName}`);
                 }
             } catch (error) {
                 const className = wrapper.metatype?.name ?? 'Unknown';
-                console.error(
-                    `Failed to register gRPC service client ${className}:`,
-                    error.message,
-                );
+                if (this.options.logging?.logErrors !== false) {
+                    this.logger.error(
+                        `Failed to register service client ${className}:`,
+                        error.message,
+                    );
+                }
             }
         }
     }
@@ -339,6 +323,13 @@ export class GrpcRegistryService implements OnModuleInit {
 
                 if (methodMetadata) {
                     methods.set(methodName, methodMetadata);
+
+                    if (this.options.logging?.debug) {
+                        this.logger.debug(
+                            `Found gRPC method: ${controllerClass.name}.${methodName}`,
+                        );
+                    }
+
                     return true;
                 }
 

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject, Logger } from '@nestjs/common';
 import { glob } from 'glob';
 
 import { GRPC_OPTIONS } from '../constants';
@@ -10,6 +10,7 @@ import { loadProto, getServiceByName } from '../utils/proto-utils';
 
 @Injectable()
 export class ProtoLoaderService implements OnModuleInit {
+    private readonly logger = new Logger('ProtoLoader');
     private protoDefinition: any = null;
     private isLoaded = false;
     private loadingPromise: Promise<any> | null = null;
@@ -33,6 +34,12 @@ export class ProtoLoaderService implements OnModuleInit {
         if (!this.options.package || typeof this.options.package !== 'string') {
             throw new Error('package is required and must be a string');
         }
+
+        if (this.options.logging?.debug) {
+            this.logger.debug(
+                `ProtoLoader initialized with path: ${this.options.protoPath}, package: ${this.options.package}`,
+            );
+        }
     }
 
     /**
@@ -40,14 +47,21 @@ export class ProtoLoaderService implements OnModuleInit {
      */
     async onModuleInit(): Promise<void> {
         try {
+            this.logger.log(`Loading proto files from: ${this.options.protoPath}`);
+
             await this.load();
+
+            this.logger.log('Proto files loaded successfully');
         } catch (error) {
-            throw new Error(`Failed to initialize ProtoLoaderService: ${error.message}`);
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.error('Failed to load proto files:', error.message);
+            }
+            throw error;
         }
     }
 
     /**
-     * Loads the proto file(s) with comprehensive error handling
+     * Loads the proto file(s) with error handling
      */
     async load(): Promise<any> {
         // Return existing loading promise if already in progress
@@ -66,11 +80,38 @@ export class ProtoLoaderService implements OnModuleInit {
         try {
             const result = await this.loadingPromise;
             this.isLoaded = true;
+
+            if (this.options.logging?.debug) {
+                const serviceNames = this.getLoadedServiceNames(result);
+                this.logger.debug(`Loaded services: ${serviceNames.join(', ')}`);
+            }
+
             return result;
         } catch (error) {
             this.loadingPromise = null; // Reset to allow retry
             throw error;
         }
+    }
+
+    /**
+     * Gets the names of loaded services for logging
+     */
+    private getLoadedServiceNames(definition: any): string[] {
+        const serviceNames: string[] = [];
+
+        try {
+            if (definition && typeof definition === 'object') {
+                for (const [key, value] of Object.entries(definition)) {
+                    if (typeof value === 'function') {
+                        serviceNames.push(key);
+                    }
+                }
+            }
+        } catch {
+            // Ignore errors in service name extraction
+        }
+
+        return serviceNames;
     }
 
     /**
@@ -119,11 +160,17 @@ export class ProtoLoaderService implements OnModuleInit {
             throw new Error(`No proto files found in ${protoPath}`);
         }
 
+        this.logger.log(`Found ${protoFiles.length} proto files`);
+
         const services = {};
         const errors: string[] = [];
 
         for (const file of protoFiles) {
             try {
+                if (this.options.logging?.debug) {
+                    this.logger.debug(`Loading proto file: ${file}`);
+                }
+
                 const packageDef = await loadProto(file, loaderOptions);
                 const fileServices = this.getServiceByPackageName(packageDef, packageName);
 
@@ -133,7 +180,10 @@ export class ProtoLoaderService implements OnModuleInit {
             } catch (error) {
                 const errorMsg = `Error loading proto file ${file}: ${error.message}`;
                 errors.push(errorMsg);
-                console.warn(errorMsg);
+
+                if (this.options.logging?.logErrors !== false) {
+                    this.logger.warn(errorMsg);
+                }
             }
         }
 
@@ -180,7 +230,7 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Loads a specific service from the proto file(s) with enhanced error handling
+     * Loads a specific service from the proto file(s)
      */
     async loadService(serviceName: string): Promise<any> {
         try {
@@ -299,7 +349,7 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Finds proto files with enhanced error handling and validation
+     * Finds proto files with error handling
      */
     private async findProtoFiles(pathPattern: string): Promise<string[]> {
         try {
@@ -324,7 +374,9 @@ export class ProtoLoaderService implements OnModuleInit {
                     fs.accessSync(file, fs.constants.R_OK);
                     validFiles.push(file);
                 } catch (error) {
-                    console.warn(`Warning: Cannot read proto file ${file}: ${error.message}`);
+                    if (this.options.logging?.logErrors !== false) {
+                        this.logger.warn(`Cannot read proto file ${file}: ${error.message}`);
+                    }
                 }
             }
 
@@ -337,7 +389,7 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Gets services by package name with enhanced error handling
+     * Gets services by package name
      */
     private getServiceByPackageName(proto: any, packageName: string): any {
         try {

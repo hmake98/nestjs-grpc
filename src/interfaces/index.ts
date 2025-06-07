@@ -3,6 +3,23 @@ import type { Options } from '@grpc/proto-loader';
 import type { DynamicModule, ModuleMetadata, Provider, Type } from '@nestjs/common';
 
 /**
+ * Simple logging options for gRPC debugging
+ */
+export interface GrpcLoggingOptions {
+    /**
+     * Enable debug logging
+     * @default false
+     */
+    debug?: boolean;
+
+    /**
+     * Log gRPC errors
+     * @default true
+     */
+    logErrors?: boolean;
+}
+
+/**
  * Options for the gRPC module
  */
 export interface GrpcOptions {
@@ -62,6 +79,11 @@ export interface GrpcOptions {
      * Options for the proto loader
      */
     loaderOptions?: Options;
+
+    /**
+     * Simple logging configuration
+     */
+    logging?: GrpcLoggingOptions;
 }
 
 /**
