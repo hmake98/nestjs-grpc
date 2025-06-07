@@ -200,7 +200,29 @@ export interface GrpcMethodOptions {
 }
 
 /**
- * Interface for gRPC service options
+ * Interface for gRPC controller options
+ */
+export interface GrpcControllerOptions {
+    /**
+     * Service name as defined in the proto file
+     */
+    serviceName: string;
+
+    /**
+     * The proto package name
+     * If not provided, uses global package
+     */
+    package?: string;
+
+    /**
+     * Custom URL for this service
+     * If not provided, uses global URL
+     */
+    url?: string;
+}
+
+/**
+ * Interface for gRPC service client options
  */
 export interface GrpcServiceOptions {
     /**
@@ -213,6 +235,17 @@ export interface GrpcServiceOptions {
      * If not provided, uses global package
      */
     package?: string;
+
+    /**
+     * Custom URL for this service
+     * If not provided, uses global URL
+     */
+    url?: string;
+
+    /**
+     * Custom client options
+     */
+    clientOptions?: Partial<GrpcClientOptions>;
 }
 
 /**
@@ -300,6 +333,26 @@ export interface GenerateCommandOptions {
      * @default false
      */
     noClientInterfaces?: boolean;
+}
+
+/**
+ * Controller metadata interface
+ */
+export interface ControllerMetadata {
+    serviceName: string;
+    package?: string;
+    url?: string;
+    methods: Map<string, GrpcMethodOptions>;
+}
+
+/**
+ * Service client metadata interface
+ */
+export interface ServiceClientMetadata {
+    serviceName: string;
+    package?: string;
+    url?: string;
+    clientOptions?: Partial<GrpcClientOptions>;
 }
 
 /**

@@ -4,14 +4,24 @@
 export const GRPC_OPTIONS = 'GRPC_OPTIONS';
 
 /**
- * Metadata key for gRPC service
+ * Metadata key for gRPC controller
  */
-export const GRPC_SERVICE_METADATA = 'GRPC_SERVICE_METADATA';
+export const GRPC_CONTROLLER_METADATA = 'GRPC_CONTROLLER_METADATA';
 
 /**
  * Metadata key for gRPC method
  */
 export const GRPC_METHOD_METADATA = 'GRPC_METHOD_METADATA';
+
+/**
+ * Metadata key for gRPC service client
+ */
+export const GRPC_SERVICE_METADATA = 'GRPC_SERVICE_METADATA';
+
+/**
+ * Token for gRPC client instances
+ */
+export const GRPC_CLIENT_TOKEN_PREFIX = 'GRPC_CLIENT_';
 
 /**
  * Default gRPC maximum message size
