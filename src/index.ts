@@ -16,6 +16,9 @@ export * from './exceptions/grpc.exception-filter';
 // Interfaces
 export * from './interfaces';
 
+// Export the specific interface for better IDE support
+export type { GrpcFeatureOptions } from './interfaces';
+
 // Services
 export * from './services/grpc-client.service';
 export * from './services/proto-loader.service';
