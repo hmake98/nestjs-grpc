@@ -1,5 +1,6 @@
 import type { GrpcErrorCode } from '../constants';
 import type { Options } from '@grpc/proto-loader';
+import type { DynamicModule, Provider, Type } from '@nestjs/common';
 
 /**
  * Options for the gRPC module
@@ -174,6 +175,37 @@ export interface GrpcModuleAsyncOptions {
      * Use class provider
      */
     useClass?: any;
+}
+
+/**
+ * Options for the GrpcModule.forFeature() method
+ */
+export interface GrpcFeatureOptions {
+    /**
+     * gRPC controllers to register (classes decorated with @GrpcController)
+     */
+    controllers?: Type<any>[];
+
+    /**
+     * gRPC service clients to register (classes decorated with @GrpcService)
+     */
+    services?: Type<any>[];
+
+    /**
+     * Additional providers that the controllers/services depend on
+     * These will be registered in the feature module
+     */
+    providers?: Provider[];
+
+    /**
+     * Modules to import that provide dependencies for controllers/services
+     */
+    imports?: Array<Type<any> | DynamicModule>;
+
+    /**
+     * Additional exports from this feature module
+     */
+    exports?: Array<Type<any> | string | symbol>;
 }
 
 /**

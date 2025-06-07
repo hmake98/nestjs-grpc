@@ -21,6 +21,7 @@ import {
     GrpcOptions,
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
+    GrpcFeatureOptions,
     ControllerMetadata,
     ServiceClientMetadata,
 } from './interfaces';
@@ -80,7 +81,7 @@ export class GrpcModule {
                 module: GrpcModule,
                 imports: [DiscoveryModule],
                 providers,
-                exports: [GrpcClientService, GRPC_OPTIONS, GrpcRegistryService],
+                exports: [GrpcClientService, ProtoLoaderService, GRPC_OPTIONS, GrpcRegistryService],
             };
         } catch (error) {
             throw new Error(`Failed to configure GrpcModule: ${error.message}`);
@@ -113,7 +114,7 @@ export class GrpcModule {
                 module: GrpcModule,
                 imports: [DiscoveryModule],
                 providers,
-                exports: [GrpcClientService, GRPC_OPTIONS, GrpcRegistryService],
+                exports: [GrpcClientService, ProtoLoaderService, GRPC_OPTIONS, GrpcRegistryService],
             };
         } catch (error) {
             throw new Error(`Failed to configure GrpcModule async: ${error.message}`);
@@ -121,22 +122,74 @@ export class GrpcModule {
     }
 
     /**
-     * Register controllers and service clients for a feature module
-     * @param options Configuration object with controllers and services arrays
+     * Register controllers and service clients for a feature module with enhanced dependency injection support
+     * @param options Configuration object with controllers, services, providers, and imports
      * @returns The dynamic module
      */
-    static forFeature(
-        options: {
-            controllers?: Type<any>[];
-            services?: Type<any>[];
-        } = {},
-    ): DynamicModule {
-        if (options && typeof options !== 'object') {
-            throw new Error('forFeature options must be an object');
+    static forFeature(options: GrpcFeatureOptions = {}): DynamicModule {
+        try {
+            if (options && typeof options !== 'object') {
+                throw new Error('forFeature options must be an object');
+            }
+
+            const {
+                controllers = [],
+                services = [],
+                providers = [],
+                imports = [],
+                exports = [],
+            } = options;
+
+            // Validate input arrays
+            this.validateFeatureOptions(controllers, services, providers, imports, exports);
+
+            // Create all providers needed for the feature module
+            const featureProviders: Provider[] = [
+                // Register controllers as providers so they can be injected
+                ...controllers,
+                // Create gRPC service client providers
+                ...this.createServiceClientProviders(services),
+                // Add any additional providers specified by the user
+                ...providers,
+            ];
+
+            // Create exports array
+            const featureExports = [
+                // Export controllers so they can be used elsewhere
+                ...controllers,
+                // Export service clients so they can be injected
+                ...services,
+                // Export any additional exports specified by the user
+                ...exports,
+            ];
+
+            return {
+                module: GrpcModule,
+                imports: [
+                    // Always import the discovery module for metadata scanning
+                    DiscoveryModule,
+                    // Add any user-specified imports
+                    ...imports,
+                ],
+                providers: featureProviders,
+                controllers, // Register as NestJS controllers
+                exports: featureExports,
+            };
+        } catch (error) {
+            throw new Error(`Failed to configure GrpcModule feature: ${error.message}`);
         }
+    }
 
-        const { controllers = [], services = [] } = options;
-
+    /**
+     * Validates the feature module options
+     */
+    private static validateFeatureOptions(
+        controllers: Type<any>[],
+        services: Type<any>[],
+        providers: Provider[],
+        imports: Array<Type<any> | DynamicModule>,
+        exports: Array<Type<any> | string | symbol>,
+    ): void {
         // Validate controllers array
         if (!Array.isArray(controllers)) {
             throw new Error('controllers must be an array');
@@ -147,8 +200,27 @@ export class GrpcModule {
             throw new Error('services must be an array');
         }
 
+        // Validate providers array
+        if (!Array.isArray(providers)) {
+            throw new Error('providers must be an array');
+        }
+
+        // Validate imports array
+        if (!Array.isArray(imports)) {
+            throw new Error('imports must be an array');
+        }
+
+        // Validate exports array
+        if (!Array.isArray(exports)) {
+            throw new Error('exports must be an array');
+        }
+
         // Validate that controllers have the right metadata
-        controllers.forEach(controller => {
+        controllers.forEach((controller, index) => {
+            if (!controller || typeof controller !== 'function') {
+                throw new Error(`Controller at index ${index} must be a class constructor`);
+            }
+
             if (!Reflect.hasMetadata(GRPC_CONTROLLER_METADATA, controller)) {
                 throw new Error(
                     `Controller ${controller.name} must be decorated with @GrpcController`,
@@ -157,24 +229,33 @@ export class GrpcModule {
         });
 
         // Validate that services have the right metadata
-        services.forEach(service => {
+        services.forEach((service, index) => {
+            if (!service || typeof service !== 'function') {
+                throw new Error(`Service at index ${index} must be a class constructor`);
+            }
+
             if (!Reflect.hasMetadata(GRPC_SERVICE_METADATA, service)) {
                 throw new Error(`Service ${service.name} must be decorated with @GrpcService`);
             }
         });
 
-        const providers: Provider[] = [
-            // Register controllers as providers
-            ...controllers,
-            // Create client providers for services
-            ...this.createServiceClientProviders(services),
-        ];
+        // Validate imports
+        imports.forEach((importItem, index) => {
+            if (!importItem) {
+                throw new Error(`Import at index ${index} cannot be null or undefined`);
+            }
 
-        return {
-            module: GrpcModule,
-            providers,
-            exports: [...controllers, ...services],
-        };
+            // Check if it's a class or a dynamic module
+            const isClass = typeof importItem === 'function';
+            const isDynamicModule =
+                typeof importItem === 'object' && 'module' in importItem && importItem.module;
+
+            if (!isClass && !isDynamicModule) {
+                throw new Error(
+                    `Import at index ${index} must be a class constructor or dynamic module`,
+                );
+            }
+        });
     }
 
     /**
@@ -231,71 +312,82 @@ export class GrpcModule {
     }
 
     /**
-     * Creates providers for service clients
+     * Creates providers for service clients with enhanced error handling
      */
     private static createServiceClientProviders(services: Type<any>[]): Provider[] {
         const serviceProviders: Provider[] = [];
         const tokenProviders: Provider[] = [];
 
         services.forEach(serviceClass => {
-            const metadata: ServiceClientMetadata = Reflect.getMetadata(
-                GRPC_SERVICE_METADATA,
-                serviceClass,
-            );
+            try {
+                const metadata: ServiceClientMetadata = Reflect.getMetadata(
+                    GRPC_SERVICE_METADATA,
+                    serviceClass,
+                );
 
-            if (!metadata) {
-                throw new Error(`Service ${serviceClass.name} must be decorated with @GrpcService`);
-            }
+                if (!metadata) {
+                    throw new Error(
+                        `Service ${serviceClass.name} must be decorated with @GrpcService`,
+                    );
+                }
 
-            const clientToken = `${GRPC_CLIENT_TOKEN_PREFIX}${metadata.serviceName}`;
+                const clientToken = `${GRPC_CLIENT_TOKEN_PREFIX}${metadata.serviceName}`;
 
-            // Provider for the service class
-            serviceProviders.push({
-                provide: serviceClass,
-                useFactory: (clientService: GrpcClientService) => {
-                    try {
-                        const client = clientService.create(
-                            metadata.serviceName,
-                            metadata.clientOptions,
-                        );
+                // Provider for the service class
+                serviceProviders.push({
+                    provide: serviceClass,
+                    useFactory: (clientService: GrpcClientService) => {
+                        try {
+                            const client = clientService.create(
+                                metadata.serviceName,
+                                metadata.clientOptions,
+                            );
 
-                        // Create a proxy object that has the same interface as the service class
-                        const serviceInstance = new serviceClass();
+                            // Create a proxy object that has the same interface as the service class
+                            const serviceInstance = new serviceClass();
 
-                        // Copy all client methods to the service instance
-                        if (client && typeof client === 'object') {
-                            Object.keys(client as Record<string, any>).forEach(methodName => {
-                                const method = (client as Record<string, any>)[methodName];
-                                if (typeof method === 'function') {
-                                    serviceInstance[methodName] = method.bind(client);
-                                }
-                            });
+                            // Copy all client methods to the service instance
+                            if (client && typeof client === 'object') {
+                                Object.keys(client as Record<string, any>).forEach(methodName => {
+                                    const method = (client as Record<string, any>)[methodName];
+                                    if (typeof method === 'function') {
+                                        serviceInstance[methodName] = method.bind(client);
+                                    }
+                                });
+                            }
+
+                            return serviceInstance;
+                        } catch (error) {
+                            throw new Error(
+                                `Failed to create gRPC client for service ${metadata.serviceName}: ${error.message}`,
+                            );
                         }
+                    },
+                    inject: [GrpcClientService],
+                });
 
-                        return serviceInstance;
-                    } catch (error) {
-                        throw new Error(
-                            `Failed to create gRPC client for service ${metadata.serviceName}: ${error.message}`,
-                        );
-                    }
-                },
-                inject: [GrpcClientService],
-            });
-
-            // Provider for @InjectGrpcClient decorator
-            tokenProviders.push({
-                provide: clientToken,
-                useFactory: (clientService: GrpcClientService) => {
-                    try {
-                        return clientService.create(metadata.serviceName, metadata.clientOptions);
-                    } catch (error) {
-                        throw new Error(
-                            `Failed to create gRPC client for token ${clientToken}: ${error.message}`,
-                        );
-                    }
-                },
-                inject: [GrpcClientService],
-            });
+                // Provider for @InjectGrpcClient decorator
+                tokenProviders.push({
+                    provide: clientToken,
+                    useFactory: (clientService: GrpcClientService) => {
+                        try {
+                            return clientService.create(
+                                metadata.serviceName,
+                                metadata.clientOptions,
+                            );
+                        } catch (error) {
+                            throw new Error(
+                                `Failed to create gRPC client for token ${clientToken}: ${error.message}`,
+                            );
+                        }
+                    },
+                    inject: [GrpcClientService],
+                });
+            } catch (error) {
+                throw new Error(
+                    `Error creating providers for service ${serviceClass.name}: ${error.message}`,
+                );
+            }
         });
 
         return serviceProviders.concat(tokenProviders);
