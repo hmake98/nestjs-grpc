@@ -1,5 +1,5 @@
 import * as grpc from '@grpc/grpc-js';
-import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { Observable } from 'rxjs';
 
 import { GRPC_OPTIONS } from '../constants';
@@ -16,11 +16,13 @@ interface CachedClient {
     client: any;
     createdAt: number;
     lastUsed: number;
-    config: string; // For cache key differentiation
+    config: string;
+    serviceName: string;
 }
 
 @Injectable()
 export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger('GrpcClient');
     private readonly clients = new Map<string, CachedClient>();
     private readonly activeStreams = new Set<any>();
     private cleanupInterval?: NodeJS.Timeout;
@@ -49,6 +51,10 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         if (!this.options.package || typeof this.options.package !== 'string') {
             throw new Error('package is required in gRPC options');
         }
+
+        if (this.options.logging?.debug) {
+            this.logger.debug(`GrpcClientService initialized for package: ${this.options.package}`);
+        }
     }
 
     /**
@@ -56,6 +62,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     onModuleInit(): void {
         try {
+            this.logger.log('GrpcClientService starting...');
+
             // Start cleanup interval for client cache
             this.cleanupInterval = setInterval(() => {
                 this.cleanupStaleClients();
@@ -65,7 +73,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             if (!this.protoLoaderService) {
                 throw new Error('ProtoLoaderService is not available');
             }
+
+            this.logger.log('GrpcClientService started successfully');
         } catch (error) {
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.error('Failed to initialize GrpcClientService:', error.message);
+            }
             throw new Error(`Failed to initialize GrpcClientService: ${error.message}`);
         }
     }
@@ -75,36 +88,52 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     onModuleDestroy(): void {
         try {
+            this.logger.log('GrpcClientService shutting down...');
+
             // Clear cleanup interval
             if (this.cleanupInterval) {
                 clearInterval(this.cleanupInterval);
             }
 
             // Close all active streams
+            let streamsClosedCount = 0;
             for (const stream of this.activeStreams) {
                 try {
                     if (stream && typeof stream.cancel === 'function') {
                         stream.cancel();
+                        streamsClosedCount++;
                     }
                 } catch (error) {
-                    console.warn('Error cancelling stream:', error.message);
+                    if (this.options.logging?.logErrors !== false) {
+                        this.logger.warn('Error cancelling stream:', error.message);
+                    }
                 }
             }
             this.activeStreams.clear();
 
             // Close all clients
+            let clientsClosedCount = 0;
             for (const [key, cachedClient] of this.clients) {
                 try {
                     if (cachedClient.client && typeof cachedClient.client.close === 'function') {
                         cachedClient.client.close();
+                        clientsClosedCount++;
                     }
                 } catch (error) {
-                    console.warn(`Error closing client ${key}:`, error.message);
+                    if (this.options.logging?.logErrors !== false) {
+                        this.logger.warn(`Error closing client ${key}:`, error.message);
+                    }
                 }
             }
             this.clients.clear();
+
+            this.logger.log(
+                `GrpcClientService shutdown complete: ${clientsClosedCount} clients, ${streamsClosedCount} streams closed`,
+            );
         } catch (error) {
-            console.error('Error during GrpcClientService cleanup:', error.message);
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.error('Error during GrpcClientService cleanup:', error.message);
+            }
         }
     }
 
@@ -114,6 +143,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     private cleanupStaleClients(): void {
         const now = Date.now();
         const staleCutoff = now - this.CLIENT_CACHE_TTL;
+        let cleanedUpCount = 0;
 
         for (const [key, cachedClient] of this.clients) {
             if (cachedClient.lastUsed < staleCutoff) {
@@ -121,12 +151,19 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     if (cachedClient.client && typeof cachedClient.client.close === 'function') {
                         cachedClient.client.close();
                     }
+                    cleanedUpCount++;
                 } catch (error) {
-                    console.warn(`Error closing stale client ${key}:`, error.message);
+                    if (this.options.logging?.logErrors !== false) {
+                        this.logger.warn(`Error closing stale client ${key}:`, error.message);
+                    }
                 } finally {
                     this.clients.delete(key);
                 }
             }
+        }
+
+        if (cleanedUpCount > 0 && this.options.logging?.debug) {
+            this.logger.debug(`Cleaned up ${cleanedUpCount} stale gRPC clients`);
         }
     }
 
@@ -135,6 +172,10 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     create<T>(serviceName: string, options?: Partial<GrpcClientOptions>): T {
         try {
+            if (this.options.logging?.debug) {
+                this.logger.debug(`Creating gRPC client for service: ${serviceName}`);
+            }
+
             this.validateCreateParameters(serviceName, options);
 
             const clientOptions = this.mergeClientOptions(serviceName, options);
@@ -144,6 +185,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             // Return cached client if available and not stale
             if (cachedClient) {
                 cachedClient.lastUsed = Date.now();
+
+                if (this.options.logging?.debug) {
+                    this.logger.debug(`Returning cached gRPC client for ${serviceName}`);
+                }
+
                 return cachedClient.client as T;
             }
 
@@ -157,10 +203,19 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 createdAt: Date.now(),
                 lastUsed: Date.now(),
                 config: this.getConfigHash(clientOptions),
+                serviceName,
             });
+
+            this.logger.log(`Created gRPC client for service: ${serviceName}`);
 
             return client as T;
         } catch (error) {
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.error(
+                    `Failed to create gRPC client for service ${serviceName}:`,
+                    error.message,
+                );
+            }
             throw new Error(
                 `Failed to create gRPC client for service ${serviceName}: ${error.message}`,
             );
@@ -185,7 +240,9 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }
             return this.getAvailableServicesRecursive(protoServices);
         } catch (error) {
-            console.warn('Error getting available services:', error.message);
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.warn('Error getting available services:', error.message);
+            }
             return [];
         }
     }
@@ -293,6 +350,10 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 throw new Error(`Service '${serviceName}' is not a valid constructor function`);
             }
 
+            if (this.options.logging?.debug) {
+                this.logger.debug(`Found service constructor for: ${serviceName}`);
+            }
+
             return serviceConstructor;
         } catch (error) {
             throw new Error(`Service lookup failed: ${error.message}`);
@@ -375,7 +436,9 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 }
             }
         } catch (error) {
-            console.warn('Error while discovering services:', error.message);
+            if (this.options.logging?.logErrors !== false) {
+                this.logger.warn('Error while discovering services:', error.message);
+            }
         }
 
         return services;
@@ -403,6 +466,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             channelOptions: { ...this.options.loaderOptions, ...options?.channelOptions },
         };
 
+        if (this.options.logging?.debug) {
+            this.logger.debug(`Merged client options for ${serviceName}:`, {
+                url: merged.url,
+                secure: merged.secure,
+                timeout: merged.timeout,
+            });
+        }
+
         return merged;
     }
 
@@ -416,6 +487,10 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             // Validate URL
             if (!url || typeof url !== 'string') {
                 throw new Error('Invalid URL provided');
+            }
+
+            if (this.options.logging?.debug) {
+                this.logger.debug(`Creating gRPC client connection to: ${url} (secure: ${secure})`);
             }
 
             // Create credentials
@@ -451,7 +526,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             const methods = getServiceMethods(client.constructor);
 
             if (methods.length === 0) {
-                console.warn(`No methods found for gRPC service ${options.service}`);
+                if (this.options.logging?.logErrors !== false) {
+                    this.logger.warn(`No methods found for gRPC service ${options.service}`);
+                }
+            } else if (this.options.logging?.debug) {
+                this.logger.debug(
+                    `Wrapping ${methods.length} methods for service ${options.service}:`,
+                    methods,
+                );
             }
 
             for (const methodName of methods) {
@@ -472,6 +554,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 } else {
                     wrappedClient[methodName] = this.wrapUnaryMethod(client, methodName, options);
                 }
+
+                if (this.options.logging?.debug) {
+                    this.logger.debug(
+                        `Wrapped ${isStreamingMethod ? 'streaming' : 'unary'} method: ${methodName}`,
+                    );
+                }
             }
 
             // Add utility methods
@@ -483,7 +571,9 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         client.close();
                     }
                 } catch (error) {
-                    console.warn('Error closing client:', error.message);
+                    if (this.options.logging?.logErrors !== false) {
+                        this.logger.warn('Error closing client:', error.message);
+                    }
                 }
             };
 
@@ -530,14 +620,29 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     const meta = metadata ?? new grpc.Metadata();
                     const deadline = this.getDeadline(options.timeout);
 
+                    if (this.options.logging?.debug) {
+                        this.logger.debug(`Calling unary method: ${options.service}.${methodName}`);
+                    }
+
                     const call = client[methodName](
                         request,
                         meta,
                         { deadline },
                         (error: Error | null, response: any) => {
                             if (error) {
+                                if (this.options.logging?.logErrors !== false) {
+                                    this.logger.error(
+                                        `gRPC call failed for ${options.service}.${methodName}:`,
+                                        error.message,
+                                    );
+                                }
                                 reject(new Error(`gRPC call failed: ${error.message}`));
                             } else {
+                                if (this.options.logging?.debug) {
+                                    this.logger.debug(
+                                        `gRPC call successful for ${options.service}.${methodName}`,
+                                    );
+                                }
                                 resolve(response);
                             }
                         },
@@ -547,7 +652,13 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     const timeoutId = setTimeout(() => {
                         try {
                             call.cancel();
-                            reject(new Error(`gRPC call timed out after ${options.timeout}ms`));
+                            const errorMsg = `gRPC call timed out after ${options.timeout}ms`;
+                            if (this.options.logging?.logErrors !== false) {
+                                this.logger.error(
+                                    `${errorMsg} for ${options.service}.${methodName}`,
+                                );
+                            }
+                            reject(new Error(errorMsg));
                         } catch {
                             reject(new Error(`gRPC call timeout and cancellation failed`));
                         }
@@ -584,6 +695,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     const meta = metadata ?? new grpc.Metadata();
                     const deadline = this.getDeadline(options.timeout);
 
+                    if (this.options.logging?.debug) {
+                        this.logger.debug(
+                            `Starting streaming method: ${options.service}.${methodName}`,
+                        );
+                    }
+
                     call = client[methodName](request, meta, { deadline });
 
                     // Track active stream
@@ -593,13 +710,20 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         try {
                             observer.next(data);
                         } catch (error) {
-                            console.warn('Error processing stream data:', error.message);
+                            if (this.options.logging?.logErrors !== false) {
+                                this.logger.warn('Error processing stream data:', error.message);
+                            }
                         }
                     });
 
                     call.on('end', () => {
                         if (!isCompleted) {
                             isCompleted = true;
+                            if (this.options.logging?.debug) {
+                                this.logger.debug(
+                                    `Stream completed for ${options.service}.${methodName}`,
+                                );
+                            }
                             observer.complete();
                         }
                     });
@@ -607,6 +731,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     call.on('error', (error: Error) => {
                         if (!isCompleted) {
                             isCompleted = true;
+                            if (this.options.logging?.logErrors !== false) {
+                                this.logger.error(
+                                    `gRPC stream error for ${options.service}.${methodName}:`,
+                                    error.message,
+                                );
+                            }
                             observer.error(new Error(`gRPC stream error: ${error.message}`));
                         }
                     });
@@ -617,9 +747,13 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                             isCompleted = true;
                             try {
                                 call.cancel();
-                                observer.error(
-                                    new Error(`gRPC stream timed out after ${options.timeout}ms`),
-                                );
+                                const errorMsg = `gRPC stream timed out after ${options.timeout}ms`;
+                                if (this.options.logging?.logErrors !== false) {
+                                    this.logger.error(
+                                        `${errorMsg} for ${options.service}.${methodName}`,
+                                    );
+                                }
+                                observer.error(new Error(errorMsg));
                             } catch {
                                 observer.error(
                                     new Error('gRPC stream timeout and cancellation failed'),
@@ -637,8 +771,15 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                             try {
                                 this.activeStreams.delete(call);
                                 call.cancel();
+                                if (this.options.logging?.debug) {
+                                    this.logger.debug(
+                                        `Stream cancelled for ${options.service}.${methodName}`,
+                                    );
+                                }
                             } catch (error) {
-                                console.warn('Error during stream cleanup:', error.message);
+                                if (this.options.logging?.logErrors !== false) {
+                                    this.logger.warn('Error during stream cleanup:', error.message);
+                                }
                             }
                         }
                     };

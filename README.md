@@ -27,6 +27,7 @@
 - 🔌 **Complete DI Support** - Inject any NestJS service into gRPC controllers and clients
 - 🗃️ **Database Integration** - Seamless TypeORM, Prisma, and other ORM support
 - ⚙️ **Configuration** - Built-in support for NestJS Config module
+- 🔍 **Debug Logging** - Comprehensive logging for easy debugging and monitoring
 
 ## 🚀 Quick Start
 
@@ -77,11 +78,15 @@ import { AuthModule } from './auth/auth.module';
     // Global configuration
     ConfigModule.forRoot({ isGlobal: true }),
 
-    // Global gRPC configuration
+    // Global gRPC configuration with logging
     GrpcModule.forRoot({
       protoPath: './protos/auth.proto',
       package: 'auth',
       url: 'localhost:50051',
+      logging: {
+        debug: true,        // Enable debug logging for development
+        logErrors: true,    // Enable error logging (default: true)
+      }
     }),
 
     // Feature modules
@@ -289,6 +294,54 @@ export class UserService {
 
 ## 📖 Documentation
 
+### Logging Configuration
+
+#### Basic Logging Setup
+
+```typescript
+// Enable debug logging for development
+GrpcModule.forRoot({
+  protoPath: './protos/service.proto',
+  package: 'service',
+  url: 'localhost:50051',
+  logging: {
+    debug: true,        // Enable detailed debug logs
+    logErrors: true,    // Enable error logging (default: true)
+  }
+})
+```
+
+#### Environment-Based Logging
+
+```typescript
+GrpcModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    protoPath: config.get('GRPC_PROTO_PATH'),
+    package: config.get('GRPC_PACKAGE'),
+    url: config.get('GRPC_URL'),
+    logging: {
+      debug: config.get('NODE_ENV') === 'development',
+      logErrors: true,
+    }
+  }),
+})
+```
+
+#### Example Log Output
+
+When debug logging is enabled, you'll see detailed information:
+
+```
+[Nest] 12345  - 01/01/2024, 10:00:00 AM     LOG [ProtoLoader] Loading proto files from: ./protos/auth.proto
+[Nest] 12345  - 01/01/2024, 10:00:00 AM   DEBUG [ProtoLoader] Loaded services: AuthService
+[Nest] 12345  - 01/01/2024, 10:00:00 AM     LOG [GrpcRegistry] Starting gRPC service discovery...
+[Nest] 12345  - 01/01/2024, 10:00:00 AM     LOG [GrpcRegistry] Registered controller: AuthService
+[Nest] 12345  - 01/01/2024, 10:00:00 AM   DEBUG [GrpcRegistry] Found gRPC method: AuthController.login
+[Nest] 12345  - 01/01/2024, 10:00:00 AM     LOG [GrpcClient] Created gRPC client for service: AuthService
+[Nest] 12345  - 01/01/2024, 10:00:01 AM   DEBUG [GrpcClient] Calling unary method: AuthService.validateToken
+```
+
 ### Enhanced Feature Module Configuration
 
 #### Basic Feature Module
@@ -411,6 +464,10 @@ GrpcModule.forRoot({
   rootCerts: readFileSync('./certs/ca.crt'),
   maxSendMessageSize: 10 * 1024 * 1024, // 10MB
   maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
+  logging: {
+    debug: false,       // Disable debug logs in production
+    logErrors: true,    // Keep error logging enabled
+  }
 })
 ```
 
@@ -1074,6 +1131,10 @@ async createUser(request: CreateUserRequest): Promise<User> {
         url: config.get('GRPC_URL'),
         secure: config.get('NODE_ENV') === 'production',
         maxSendMessageSize: config.get('GRPC_MAX_MESSAGE_SIZE', 4 * 1024 * 1024),
+        logging: {
+          debug: config.get('NODE_ENV') === 'development',
+          logErrors: true,
+        }
       }),
     }),
   ],
@@ -1233,17 +1294,56 @@ GrpcModule.forFeature({
 })
 ```
 
-### Debugging
+### Debugging with Logs
 
-Enable verbose logging:
+Enable debug logging to troubleshoot issues:
 
 ```typescript
-// In development
+// Enable detailed logging for debugging
 GrpcModule.forRoot({
-  // ... other options
-  loaderOptions: {
-    // Add debugging options
+  protoPath: './protos/service.proto',
+  package: 'service',
+  url: 'localhost:50051',
+  logging: {
+    debug: true,        // ✅ Enable debug logs
+    logErrors: true,    // ✅ Enable error logs
   }
+})
+```
+
+**Debug logs will show:**
+- Proto file loading progress
+- Service discovery details
+- Client creation and caching
+- Method call attempts
+- Connection status
+- Error details with stack traces
+
+### Environment Configuration
+
+Create a `.env` file for easy debugging:
+
+```env
+NODE_ENV=development
+GRPC_DEBUG=true
+GRPC_PROTO_PATH=./protos/service.proto
+GRPC_PACKAGE=service
+GRPC_URL=localhost:50051
+```
+
+```typescript
+// Use environment variables for logging
+GrpcModule.forRootAsync({
+  inject: [ConfigService],
+  useFactory: (config: ConfigService) => ({
+    protoPath: config.get('GRPC_PROTO_PATH'),
+    package: config.get('GRPC_PACKAGE'),
+    url: config.get('GRPC_URL'),
+    logging: {
+      debug: config.get('NODE_ENV') === 'development' || config.get('GRPC_DEBUG') === 'true',
+      logErrors: true,
+    }
+  }),
 })
 ```
 
@@ -1308,6 +1408,12 @@ getAllUsers(): Observable<User> {
 ### Enhanced Interfaces
 
 ```typescript
+// Logging options
+interface GrpcLoggingOptions {
+  debug?: boolean;        // Enable debug logging
+  logErrors?: boolean;    // Enable error logging (default: true)
+}
+
 // Feature module options
 interface GrpcFeatureOptions {
   controllers?: Type<any>[];                    // gRPC controllers
@@ -1324,6 +1430,7 @@ interface GrpcOptions {
   secure?: boolean;
   maxSendMessageSize?: number;
   maxReceiveMessageSize?: number;
+  logging?: GrpcLoggingOptions;  // Logging configuration
   // ... additional options
 }
 
