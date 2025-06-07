@@ -354,17 +354,3 @@ export interface ServiceClientMetadata {
     url?: string;
     clientOptions?: Partial<GrpcClientOptions>;
 }
-
-/**
- * Simple validation constraints
- */
-export const VALIDATION_LIMITS = {
-    MAX_MESSAGE_SIZE: 100 * 1024 * 1024, // 100MB
-    MIN_MESSAGE_SIZE: 1024, // 1KB
-    MAX_TIMEOUT: 5 * 60 * 1000, // 5 minutes
-    MIN_TIMEOUT: 1000, // 1 second
-    MAX_RETRIES: 10,
-    MIN_RETRIES: 0,
-    MAX_RETRY_DELAY: 10000, // 10 seconds
-    MIN_RETRY_DELAY: 100, // 100ms
-} as const;
