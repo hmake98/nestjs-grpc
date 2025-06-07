@@ -1,6 +1,6 @@
 import type { GrpcErrorCode } from '../constants';
 import type { Options } from '@grpc/proto-loader';
-import type { DynamicModule, Provider, Type } from '@nestjs/common';
+import type { DynamicModule, ModuleMetadata, Provider, Type } from '@nestjs/common';
 
 /**
  * Options for the gRPC module
@@ -153,57 +153,68 @@ export interface GrpcOptionsFactory {
 }
 
 /**
- * Async options for the gRPC module
+ * Async configuration options for the gRPC module
  */
-export interface GrpcModuleAsyncOptions {
+export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
     /**
-     * Factory function for creating options
+     * Factory function to create gRPC options
      */
     useFactory?: (...args: any[]) => Promise<GrpcOptions> | GrpcOptions;
 
     /**
-     * Dependencies for the factory function
+     * Class that implements GrpcOptionsFactory
+     */
+    useClass?: Type<GrpcOptionsFactory>;
+
+    /**
+     * Existing provider that implements GrpcOptionsFactory
+     */
+    useExisting?: Type<GrpcOptionsFactory>;
+
+    /**
+     * Dependencies to inject into the factory function
      */
     inject?: any[];
-
-    /**
-     * Use existing provider
-     */
-    useExisting?: any;
-
-    /**
-     * Use class provider
-     */
-    useClass?: any;
 }
 
 /**
- * Options for the GrpcModule.forFeature() method
+ * ✅ Simplified options for the GrpcModule.forFeature() method
+ * Dependencies are automatically resolved from the parent module
  */
 export interface GrpcFeatureOptions {
     /**
      * gRPC controllers to register (classes decorated with @GrpcController)
+     * Dependencies will be automatically injected from the parent module
      */
     controllers?: Type<any>[];
 
     /**
      * gRPC service clients to register (classes decorated with @GrpcService)
+     * These will be auto-configured and made available for injection
      */
     services?: Type<any>[];
+}
 
+/**
+ * Extended options for advanced use cases (backward compatibility)
+ * Most users should use the simplified GrpcFeatureOptions instead
+ */
+export interface GrpcFeatureOptionsExtended extends GrpcFeatureOptions {
     /**
      * Additional providers that the controllers/services depend on
-     * These will be registered in the feature module
+     * ⚠️ Usually not needed - dependencies are auto-resolved from parent module
      */
     providers?: Provider[];
 
     /**
      * Modules to import that provide dependencies for controllers/services
+     * ⚠️ Usually not needed - dependencies are auto-resolved from parent module
      */
     imports?: Array<Type<any> | DynamicModule>;
 
     /**
      * Additional exports from this feature module
+     * ⚠️ Usually not needed - controllers and services are auto-exported
      */
     exports?: Array<Type<any> | string | symbol>;
 }
