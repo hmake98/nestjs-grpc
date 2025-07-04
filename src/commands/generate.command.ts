@@ -5,8 +5,17 @@ import { globSync } from 'glob';
 import * as protobuf from 'protobufjs';
 
 import { generateTypeDefinitions } from '../utils';
+import { GrpcLogger } from '../utils/logger';
 
 import type { GenerateCommandOptions } from '../interfaces';
+
+/**
+ * Logger for generate command
+ */
+const logger = new GrpcLogger({
+    context: 'GenerateCommand',
+    level: 'log',
+});
 
 /**
  * Validates command options
@@ -50,7 +59,7 @@ function normalizeProtoPath(protoPath: string, silent: boolean): string {
             const result = `${normalizedPath}**/*.proto`;
 
             if (!silent) {
-                console.log(`Directory detected, using pattern: ${result}`);
+                logger.log(`Directory detected, using pattern: ${result}`);
             }
 
             return result;
@@ -79,7 +88,7 @@ function findProtoFiles(pattern: string): string[] {
                 accessSync(file, constants.R_OK);
                 return true;
             } catch {
-                console.warn(`Warning: Cannot read proto file: ${file}`);
+                logger.warn(`Warning: Cannot read proto file: ${file}`);
                 return false;
             }
         });
@@ -111,7 +120,7 @@ function ensureOutputDirectory(outputPath: string, silent: boolean): void {
 
         if (!existsSync(outputDir)) {
             if (!silent) {
-                console.log(`Creating directory: ${outputDir}`);
+                logger.log(`Creating directory: ${outputDir}`);
             }
             mkdirSync(outputDir, { recursive: true });
         }
@@ -198,7 +207,7 @@ async function generateTypesForFile(
 ): Promise<void> {
     try {
         if (!silent) {
-            console.log(`Processing: ${protoFile}`);
+            logger.log(`Processing: ${protoFile}`);
         }
 
         const outputFile = getOutputPath(protoFile, outputDir);
@@ -210,7 +219,7 @@ async function generateTypesForFile(
         const typeDefinitions = generateTypeDefinitions(root, typeOptions);
 
         if (!typeDefinitions || typeDefinitions.trim().length === 0) {
-            console.warn(`Warning: No type definitions generated for ${protoFile}`);
+            logger.warn(`Warning: No type definitions generated for ${protoFile}`);
             return;
         }
 
@@ -218,11 +227,11 @@ async function generateTypesForFile(
         writeTypesToFile(typeDefinitions, outputFile);
 
         if (!silent) {
-            console.log(`Generated: ${protoFile} → ${outputFile}`);
+            logger.log(`Generated: ${protoFile} → ${outputFile}`);
         }
     } catch (error) {
         // Log error but don't throw to allow other files to process
-        console.error(`Error processing ${protoFile}: ${error.message}`);
+        logger.error(`Error processing ${protoFile}`, error);
     }
 }
 
@@ -245,7 +254,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         }
 
         if (!options.silent) {
-            console.log(`Found ${protoFiles.length} proto file(s)`);
+            logger.log(`Found ${protoFiles.length} proto file(s)`);
         }
 
         // Create type generation options
@@ -271,7 +280,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         // Report results
         if (!options.silent) {
-            console.log(`Processing complete: ${processedCount} succeeded, ${errorCount} failed`);
+            logger.log(`Processing complete: ${processedCount} succeeded, ${errorCount} failed`);
         }
 
         if (processedCount === 0) {

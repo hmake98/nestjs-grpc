@@ -6,7 +6,6 @@ import {
     Type,
     Injectable,
     OnModuleInit,
-    Logger,
     Inject,
 } from '@nestjs/common';
 import { APP_FILTER, DiscoveryModule, DiscoveryService, MetadataScanner } from '@nestjs/core';
@@ -22,11 +21,13 @@ import {
     GrpcOptions,
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
+    GrpcFeatureOptions,
     ControllerMetadata,
     ServiceClientMetadata,
 } from './interfaces';
 import { GrpcClientService } from './services/grpc-client.service';
 import { ProtoLoaderService } from './services/proto-loader.service';
+import { GrpcLogger } from './utils/logger';
 
 /**
  * Validates gRPC configuration options
@@ -124,7 +125,7 @@ export class GrpcModule {
             providers.push({
                 provide: GRPC_OPTIONS,
                 useFactory: async (...args: any[]) => {
-                    const grpcOptions = await options.useFactory!(...args);
+                    const grpcOptions = await (options.useFactory as Function)(...args);
                     validateGrpcOptions(grpcOptions);
                     return grpcOptions;
                 },
@@ -162,15 +163,36 @@ export class GrpcModule {
 
         return providers;
     }
+
+    /**
+     * Register gRPC feature modules with controllers and services
+     */
+    static forFeature(options: GrpcFeatureOptions = {}): DynamicModule {
+        const providers: Provider[] = [];
+        const controllers = options.controllers ?? [];
+        const services = options.services ?? [];
+
+        // Add service providers for client injection
+        for (const serviceClass of services) {
+            providers.push(serviceClass);
+        }
+
+        return {
+            module: GrpcModule,
+            controllers,
+            providers,
+            exports: [...services],
+        };
+    }
 }
 
 /**
  * Service responsible for discovering and registering gRPC controllers and services
- * with simple logging for debugging
+ * with enhanced logging capabilities
  */
 @Injectable()
 export class GrpcRegistryService implements OnModuleInit {
-    private readonly logger = new Logger('GrpcRegistry');
+    private readonly logger: GrpcLogger;
     private readonly controllers = new Map<string, ControllerMetadata>();
     private readonly serviceClients = new Map<string, ServiceClientMetadata>();
 
@@ -178,30 +200,34 @@ export class GrpcRegistryService implements OnModuleInit {
         private readonly discoveryService: DiscoveryService,
         private readonly metadataScanner: MetadataScanner,
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
-    ) {}
+    ) {
+        this.logger = new GrpcLogger({
+            ...options.logging,
+            context: 'GrpcRegistry',
+        });
+    }
 
     /**
      * Lifecycle hook - discovers and registers gRPC components on module initialization
      */
-    async onModuleInit(): Promise<void> {
+    onModuleInit(): void {
         try {
             this.logger.log('Starting gRPC service discovery...');
 
-            await this.discoverControllers();
-            await this.discoverServiceClients();
+            this.discoverControllers();
+            this.discoverServiceClients();
 
             this.logger.log(
                 `Discovered ${this.controllers.size} controllers, ${this.serviceClients.size} service clients`,
             );
 
-            if (this.options.logging?.debug) {
-                this.logger.debug('Controllers:', Array.from(this.controllers.keys()));
-                this.logger.debug('Service clients:', Array.from(this.serviceClients.keys()));
-            }
+            this.logger.debug('Controllers:', Array.from(this.controllers.keys()).join(', '));
+            this.logger.debug(
+                'Service clients:',
+                Array.from(this.serviceClients.keys()).join(', '),
+            );
         } catch (error) {
-            if (this.options.logging?.logErrors !== false) {
-                this.logger.error('Failed to initialize GrpcRegistryService:', error.message);
-            }
+            this.logger.error('Failed to initialize GrpcRegistryService', error);
             throw error;
         }
     }
@@ -237,7 +263,7 @@ export class GrpcRegistryService implements OnModuleInit {
     /**
      * Discovers all classes decorated with @GrpcController
      */
-    private async discoverControllers(): Promise<void> {
+    private discoverControllers(): void {
         const controllerWrappers = this.discoveryService
             .getControllers()
             .filter(
@@ -255,9 +281,7 @@ export class GrpcRegistryService implements OnModuleInit {
                 this.logger.log(`Registered controller: ${metadata.serviceName}`);
             } catch (error) {
                 const className = wrapper.metatype?.name ?? 'Unknown';
-                if (this.options.logging?.logErrors !== false) {
-                    this.logger.error(`Failed to register controller ${className}:`, error.message);
-                }
+                this.logger.error(`Failed to register controller ${className}`, error);
             }
         }
     }
@@ -265,7 +289,7 @@ export class GrpcRegistryService implements OnModuleInit {
     /**
      * Discovers all classes decorated with @GrpcService
      */
-    private async discoverServiceClients(): Promise<void> {
+    private discoverServiceClients(): void {
         const serviceWrappers = this.discoveryService
             .getProviders()
             .filter(
@@ -288,12 +312,7 @@ export class GrpcRegistryService implements OnModuleInit {
                 }
             } catch (error) {
                 const className = wrapper.metatype?.name ?? 'Unknown';
-                if (this.options.logging?.logErrors !== false) {
-                    this.logger.error(
-                        `Failed to register service client ${className}:`,
-                        error.message,
-                    );
-                }
+                this.logger.error(`Failed to register service client ${className}`, error);
             }
         }
     }
@@ -323,13 +342,7 @@ export class GrpcRegistryService implements OnModuleInit {
 
                 if (methodMetadata) {
                     methods.set(methodName, methodMetadata);
-
-                    if (this.options.logging?.debug) {
-                        this.logger.debug(
-                            `Found gRPC method: ${controllerClass.name}.${methodName}`,
-                        );
-                    }
-
+                    this.logger.debug(`Found gRPC method: ${controllerClass.name}.${methodName}`);
                     return true;
                 }
 

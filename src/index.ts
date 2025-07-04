@@ -26,6 +26,7 @@ export * from './services/proto-loader.service';
 // Utils
 export * from './utils/proto-utils';
 export * from './utils/type-utils';
+export * from './utils/logger';
 
 // CLI commands
 export * from './commands/generate.command';
