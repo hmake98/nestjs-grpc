@@ -1,9 +1,10 @@
 import * as grpc from '@grpc/grpc-js';
-import { Inject, Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { Observable } from 'rxjs';
 
 import { GRPC_OPTIONS } from '../constants';
 import { GrpcOptions, GrpcClientOptions } from '../interfaces';
+import { GrpcLogger } from '../utils/logger';
 import {
     createClientCredentials,
     createChannelOptions,
@@ -22,7 +23,7 @@ interface CachedClient {
 
 @Injectable()
 export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
-    private readonly logger = new Logger('GrpcClient');
+    private readonly logger: GrpcLogger;
     private readonly clients = new Map<string, CachedClient>();
     private readonly activeStreams = new Set<any>();
     private cleanupInterval?: NodeJS.Timeout;
@@ -33,6 +34,10 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
         private readonly protoLoaderService: ProtoLoaderService,
     ) {
+        this.logger = new GrpcLogger({
+            ...options.logging,
+            context: 'GrpcClient',
+        });
         this.validateOptions();
     }
 
@@ -76,9 +81,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
             this.logger.log('GrpcClientService started successfully');
         } catch (error) {
-            if (this.options.logging?.logErrors !== false) {
-                this.logger.error('Failed to initialize GrpcClientService:', error.message);
-            }
+            this.logger.error('Failed to initialize GrpcClientService', error);
             throw new Error(`Failed to initialize GrpcClientService: ${error.message}`);
         }
     }
@@ -104,9 +107,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         streamsClosedCount++;
                     }
                 } catch (error) {
-                    if (this.options.logging?.logErrors !== false) {
-                        this.logger.warn('Error cancelling stream:', error.message);
-                    }
+                    this.logger.warn('Error cancelling stream', error);
                 }
             }
             this.activeStreams.clear();
@@ -120,9 +121,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         clientsClosedCount++;
                     }
                 } catch (error) {
-                    if (this.options.logging?.logErrors !== false) {
-                        this.logger.warn(`Error closing client ${key}:`, error.message);
-                    }
+                    this.logger.warn(`Error closing client ${key}`, error);
                 }
             }
             this.clients.clear();
@@ -131,9 +130,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 `GrpcClientService shutdown complete: ${clientsClosedCount} clients, ${streamsClosedCount} streams closed`,
             );
         } catch (error) {
-            if (this.options.logging?.logErrors !== false) {
-                this.logger.error('Error during GrpcClientService cleanup:', error.message);
-            }
+            this.logger.error('Error during GrpcClientService cleanup', error);
         }
     }
 
@@ -153,16 +150,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     }
                     cleanedUpCount++;
                 } catch (error) {
-                    if (this.options.logging?.logErrors !== false) {
-                        this.logger.warn(`Error closing stale client ${key}:`, error.message);
-                    }
+                    this.logger.warn(`Error closing stale client ${key}`, error);
                 } finally {
                     this.clients.delete(key);
                 }
             }
         }
 
-        if (cleanedUpCount > 0 && this.options.logging?.debug) {
+        if (cleanedUpCount > 0) {
             this.logger.debug(`Cleaned up ${cleanedUpCount} stale gRPC clients`);
         }
     }
@@ -467,11 +462,14 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         };
 
         if (this.options.logging?.debug) {
-            this.logger.debug(`Merged client options for ${serviceName}:`, {
-                url: merged.url,
-                secure: merged.secure,
-                timeout: merged.timeout,
-            });
+            this.logger.debug(
+                `Merged client options for ${serviceName}`,
+                JSON.stringify({
+                    url: merged.url,
+                    secure: merged.secure,
+                    timeout: merged.timeout,
+                }),
+            );
         }
 
         return merged;
@@ -526,13 +524,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             const methods = getServiceMethods(client.constructor);
 
             if (methods.length === 0) {
-                if (this.options.logging?.logErrors !== false) {
-                    this.logger.warn(`No methods found for gRPC service ${options.service}`);
-                }
+                this.logger.warn(`No methods found for gRPC service ${options.service}`);
             } else if (this.options.logging?.debug) {
                 this.logger.debug(
                     `Wrapping ${methods.length} methods for service ${options.service}:`,
-                    methods,
+                    methods.join(', '),
                 );
             }
 
@@ -785,7 +781,9 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                     };
                 } catch (error) {
                     observer.error(new Error(`Failed to initiate gRPC stream: ${error.message}`));
-                    return () => {}; // Empty cleanup function
+                    return () => {
+                        // Empty cleanup function
+                    };
                 }
             });
         };

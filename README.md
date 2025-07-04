@@ -21,9 +21,9 @@
 - ⚡ **High Performance** - Optimized for production with connection pooling
 - 🛠️ **CLI Tools** - Generate TypeScript types from proto files
 - 🔒 **Secure** - Built-in TLS support and authentication helpers
-- 📊 **Observability** - Request/response logging and error handling
+- 📊 **Advanced Logging** - Configurable logging with multiple levels and performance metrics
 - 🧪 **Testing Friendly** - Easy mocking and testing utilities
-- 🏗️ **Enhanced Feature Modules** - Advanced `forFeature()` with full dependency injection
+- 🏗️ **Feature Modules** - Advanced `forFeature()` with full dependency injection
 - 🔌 **Complete DI Support** - Inject any NestJS service into gRPC controllers and clients
 - 🗃️ **Database Integration** - Seamless TypeORM, Prisma, and other ORM support
 - ⚙️ **Configuration** - Built-in support for NestJS Config module
@@ -74,24 +74,27 @@ import { GrpcModule } from 'nestjs-grpc';
 import { AuthModule } from './auth/auth.module';
 
 @Module({
-  imports: [
-    // Global configuration
-    ConfigModule.forRoot({ isGlobal: true }),
+    imports: [
+        // Global configuration
+        ConfigModule.forRoot({ isGlobal: true }),
 
-    // Global gRPC configuration with logging
-    GrpcModule.forRoot({
-      protoPath: './protos/auth.proto',
-      package: 'auth',
-      url: 'localhost:50051',
-      logging: {
-        debug: true,        // Enable debug logging for development
-        logErrors: true,    // Enable error logging (default: true)
-      }
-    }),
+        // Global gRPC configuration with enhanced logging
+        GrpcModule.forRoot({
+            protoPath: './protos/auth.proto',
+            package: 'auth',
+            url: 'localhost:50051',
+            logging: {
+                enabled: true, // Enable logging
+                level: 'log', // Log level: debug, verbose, log, warn, error
+                logErrors: true, // Log errors (default: true)
+                logPerformance: false, // Log performance metrics
+                logDetails: false, // Log detailed request/response data
+            },
+        }),
 
-    // Feature modules
-    AuthModule,
-  ],
+        // Feature modules
+        AuthModule,
+    ],
 })
 export class AppModule {}
 ```
@@ -113,35 +116,35 @@ import { UserClientService } from '../user/user-client.service';
 import { AuthEntity } from './entities/auth.entity';
 
 @Module({
-  imports: [
-    // Required modules for dependencies
-    TypeOrmModule.forFeature([AuthEntity]),
-    JwtModule.registerAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        secret: config.get('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
-      }),
-    }),
+    imports: [
+        // Required modules for dependencies
+        TypeOrmModule.forFeature([AuthEntity]),
+        JwtModule.registerAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                secret: config.get('JWT_SECRET'),
+                signOptions: { expiresIn: '1h' },
+            }),
+        }),
 
-    // Enhanced gRPC feature configuration
-    GrpcModule.forFeature({
-      controllers: [AuthController],           // Server-side handlers
-      services: [AuthClientService, UserClientService], // Client-side services
-      providers: [
-        AuthService,                          // Business logic
-        {
-          provide: 'AUTH_CONFIG',
-          useFactory: (config: ConfigService) => ({
-            maxLoginAttempts: config.get('MAX_LOGIN_ATTEMPTS', 5),
-            lockoutDuration: config.get('LOCKOUT_DURATION', 300000),
-          }),
-          inject: [ConfigService],
-        },
-      ],
-      exports: [AuthClientService, AuthService], // Export for other modules
-    }),
-  ],
+        // Enhanced gRPC feature configuration
+        GrpcModule.forFeature({
+            controllers: [AuthController], // Server-side handlers
+            services: [AuthClientService, UserClientService], // Client-side services
+            providers: [
+                AuthService, // Business logic
+                {
+                    provide: 'AUTH_CONFIG',
+                    useFactory: (config: ConfigService) => ({
+                        maxLoginAttempts: config.get('MAX_LOGIN_ATTEMPTS', 5),
+                        lockoutDuration: config.get('LOCKOUT_DURATION', 300000),
+                    }),
+                    inject: [ConfigService],
+                },
+            ],
+            exports: [AuthClientService, AuthService], // Export for other modules
+        }),
+    ],
 })
 export class AuthModule {}
 ```
@@ -163,89 +166,92 @@ import { UserClientService } from '../user/user-client.service';
 
 @GrpcController('AuthService')
 export class AuthController {
-  constructor(
-    // ✅ Inject TypeORM repositories
-    @InjectRepository(AuthEntity)
-    private readonly authRepository: Repository<AuthEntity>,
+    constructor(
+        // ✅ Inject TypeORM repositories
+        @InjectRepository(AuthEntity)
+        private readonly authRepository: Repository<AuthEntity>,
 
-    // ✅ Inject NestJS services
-    private readonly jwtService: JwtService,
-    private readonly authService: AuthService,
+        // ✅ Inject NestJS services
+        private readonly jwtService: JwtService,
+        private readonly authService: AuthService,
 
-    // ✅ Inject gRPC client services
-    private readonly userClient: UserClientService,
+        // ✅ Inject gRPC client services
+        private readonly userClient: UserClientService,
 
-    // ✅ Inject custom configuration
-    @Inject('AUTH_CONFIG')
-    private readonly authConfig: any,
-  ) {}
+        // ✅ Inject custom configuration
+        @Inject('AUTH_CONFIG')
+        private readonly authConfig: any,
+    ) {}
 
-  @GrpcMethod('Login')
-  async login(request: LoginRequest): Promise<LoginResponse> {
-    try {
-      // Validate input
-      if (!request.email || !request.password) {
-        throw GrpcException.invalidArgument('Email and password are required');
-      }
+    @GrpcMethod('Login')
+    async login(request: LoginRequest): Promise<LoginResponse> {
+        try {
+            // Validate input
+            if (!request.email || !request.password) {
+                throw GrpcException.invalidArgument('Email and password are required');
+            }
 
-      // Use gRPC client to get user data
-      const user = await this.userClient.getUserByEmail({ email: request.email });
+            // Use gRPC client to get user data
+            const user = await this.userClient.getUserByEmail({ email: request.email });
 
-      if (!user) {
-        throw GrpcException.unauthenticated('Invalid credentials');
-      }
+            if (!user) {
+                throw GrpcException.unauthenticated('Invalid credentials');
+            }
 
-      // Check account lockout using database
-      const authRecord = await this.authRepository.findOne({
-        where: { userId: user.id },
-      });
+            // Check account lockout using database
+            const authRecord = await this.authRepository.findOne({
+                where: { userId: user.id },
+            });
 
-      if (authRecord && this.authService.isAccountLocked(authRecord, this.authConfig)) {
-        throw GrpcException.failedPrecondition('Account is locked');
-      }
+            if (authRecord && this.authService.isAccountLocked(authRecord, this.authConfig)) {
+                throw GrpcException.failedPrecondition('Account is locked');
+            }
 
-      // Validate password and generate JWT token
-      const isValid = await this.authService.validatePassword(request.password, user.passwordHash);
+            // Validate password and generate JWT token
+            const isValid = await this.authService.validatePassword(
+                request.password,
+                user.passwordHash,
+            );
 
-      if (!isValid) {
-        await this.authService.recordFailedLogin(user.id);
-        throw GrpcException.unauthenticated('Invalid credentials');
-      }
+            if (!isValid) {
+                await this.authService.recordFailedLogin(user.id);
+                throw GrpcException.unauthenticated('Invalid credentials');
+            }
 
-      // Generate token using injected JWT service
-      const token = this.jwtService.sign({
-        sub: user.id,
-        email: user.email,
-      });
+            // Generate token using injected JWT service
+            const token = this.jwtService.sign({
+                sub: user.id,
+                email: user.email,
+            });
 
-      return { token, user };
-    } catch (error) {
-      if (error instanceof GrpcException) {
-        throw error;
-      }
-      throw GrpcException.internal(`Login failed: ${error.message}`);
+            return { token, user };
+        } catch (error) {
+            if (error instanceof GrpcException) {
+                throw error;
+            }
+            throw GrpcException.internal(`Login failed: ${error.message}`);
+        }
     }
-  }
 
-  @GrpcMethod('ValidateToken')
-  async validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse> {
-    try {
-      // Use injected JWT service
-      const payload = this.jwtService.verify(request.token);
+    @GrpcMethod('ValidateToken')
+    async validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse> {
+        try {
+            // Use injected JWT service
+            const payload = this.jwtService.verify(request.token);
 
-      // Use gRPC client to get user
-      const user = await this.userClient.getUser({ id: payload.sub });
+            // Use gRPC client to get user
+            const user = await this.userClient.getUser({ id: payload.sub });
 
-      return { valid: true, user };
-    } catch {
-      return { valid: false };
+            return { valid: true, user };
+        } catch {
+            return { valid: false };
+        }
     }
-  }
 
-  @GrpcMethod({ methodName: 'StreamUsers', streaming: true })
-  streamUsers(request: StreamUsersRequest): Observable<User> {
-    return this.authService.getUserStream(request.filter);
-  }
+    @GrpcMethod({ methodName: 'StreamUsers', streaming: true })
+    streamUsers(request: StreamUsersRequest): Observable<User> {
+        return this.authService.getUserStream(request.filter);
+    }
 }
 ```
 
@@ -259,10 +265,10 @@ import { Observable } from 'rxjs';
 
 @GrpcService('AuthService')
 export class AuthClientService {
-  // Methods are auto-populated by the gRPC client
-  login: (request: LoginRequest) => Promise<LoginResponse>;
-  validateToken: (request: ValidateTokenRequest) => Promise<ValidateTokenResponse>;
-  streamUsers: (request: StreamUsersRequest) => Observable<User>;
+    // Methods are auto-populated by the gRPC client
+    login: (request: LoginRequest) => Promise<LoginResponse>;
+    validateToken: (request: ValidateTokenRequest) => Promise<ValidateTokenResponse>;
+    streamUsers: (request: StreamUsersRequest) => Observable<User>;
 }
 ```
 
@@ -275,20 +281,20 @@ import { AuthClientService } from '../auth/auth-client.service';
 
 @Injectable()
 export class UserService {
-  constructor(private readonly authClient: AuthClientService) {}
+    constructor(private readonly authClient: AuthClientService) {}
 
-  async authenticateUser(email: string, password: string) {
-    try {
-      const response = await this.authClient.login({ email, password });
-      return response;
-    } catch (error) {
-      throw new Error(`Authentication failed: ${error.message}`);
+    async authenticateUser(email: string, password: string) {
+        try {
+            const response = await this.authClient.login({ email, password });
+            return response;
+        } catch (error) {
+            throw new Error(`Authentication failed: ${error.message}`);
+        }
     }
-  }
 
-  streamUsers(filter: string) {
-    return this.authClient.streamUsers({ filter });
-  }
+    streamUsers(filter: string) {
+        return this.authClient.streamUsers({ filter });
+    }
 }
 ```
 
@@ -301,31 +307,31 @@ export class UserService {
 ```typescript
 // Enable debug logging for development
 GrpcModule.forRoot({
-  protoPath: './protos/service.proto',
-  package: 'service',
-  url: 'localhost:50051',
-  logging: {
-    debug: true,        // Enable detailed debug logs
-    logErrors: true,    // Enable error logging (default: true)
-  }
-})
+    protoPath: './protos/service.proto',
+    package: 'service',
+    url: 'localhost:50051',
+    logging: {
+        debug: true, // Enable detailed debug logs
+        logErrors: true, // Enable error logging (default: true)
+    },
+});
 ```
 
 #### Environment-Based Logging
 
 ```typescript
 GrpcModule.forRootAsync({
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) => ({
-    protoPath: config.get('GRPC_PROTO_PATH'),
-    package: config.get('GRPC_PACKAGE'),
-    url: config.get('GRPC_URL'),
-    logging: {
-      debug: config.get('NODE_ENV') === 'development',
-      logErrors: true,
-    }
-  }),
-})
+    inject: [ConfigService],
+    useFactory: (config: ConfigService) => ({
+        protoPath: config.get('GRPC_PROTO_PATH'),
+        package: config.get('GRPC_PACKAGE'),
+        url: config.get('GRPC_URL'),
+        logging: {
+            debug: config.get('NODE_ENV') === 'development',
+            logErrors: true,
+        },
+    }),
+});
 ```
 
 #### Example Log Output
@@ -351,9 +357,9 @@ import { GrpcModule } from 'nestjs-grpc';
 
 // Simple feature module
 GrpcModule.forFeature({
-  controllers: [AuthController],
-  services: [AuthClientService],
-})
+    controllers: [AuthController],
+    services: [AuthClientService],
+});
 ```
 
 #### Advanced Feature Module with Dependencies
@@ -363,25 +369,22 @@ import { GrpcModule, GrpcFeatureOptions } from 'nestjs-grpc';
 
 // Full feature module with dependencies
 GrpcModule.forFeature({
-  controllers: [OrderController],
-  services: [PaymentClientService, InventoryClientService],
-  providers: [
-    OrderService,
-    EmailService,
-    {
-      provide: 'ORDER_CONFIG',
-      useFactory: (config: ConfigService) => ({
-        timeout: config.get('ORDER_TIMEOUT', 30000),
-      }),
-      inject: [ConfigService],
-    },
-  ],
-  imports: [
-    TypeOrmModule.forFeature([OrderEntity]),
-    HttpModule,
-  ],
-  exports: [OrderService],
-} as GrpcFeatureOptions)
+    controllers: [OrderController],
+    services: [PaymentClientService, InventoryClientService],
+    providers: [
+        OrderService,
+        EmailService,
+        {
+            provide: 'ORDER_CONFIG',
+            useFactory: (config: ConfigService) => ({
+                timeout: config.get('ORDER_TIMEOUT', 30000),
+            }),
+            inject: [ConfigService],
+        },
+    ],
+    imports: [TypeOrmModule.forFeature([OrderEntity]), HttpModule],
+    exports: [OrderService],
+} as GrpcFeatureOptions);
 ```
 
 #### Multi-Service Integration Example
@@ -389,35 +392,35 @@ GrpcModule.forFeature({
 ```typescript
 // Complex microservice with multiple dependencies
 @Module({
-  imports: [
-    // Database
-    TypeOrmModule.forFeature([OrderEntity, PaymentEntity]),
+    imports: [
+        // Database
+        TypeOrmModule.forFeature([OrderEntity, PaymentEntity]),
 
-    // External modules
-    HttpModule,
-    ConfigModule,
+        // External modules
+        HttpModule,
+        ConfigModule,
 
-    // gRPC Feature
-    GrpcModule.forFeature({
-      controllers: [OrderController],
-      services: [
-        PaymentClientService,    // Payment microservice
-        InventoryClientService, // Inventory microservice
-        UserClientService,      // User microservice
-        NotificationClientService, // Notification microservice
-      ],
-      providers: [
-        OrderService,
-        PaymentService,
-        InventoryService,
-        {
-          provide: 'PAYMENT_CONFIG',
-          useValue: { timeout: 10000 },
-        },
-      ],
-      exports: [OrderService],
-    }),
-  ],
+        // gRPC Feature
+        GrpcModule.forFeature({
+            controllers: [OrderController],
+            services: [
+                PaymentClientService, // Payment microservice
+                InventoryClientService, // Inventory microservice
+                UserClientService, // User microservice
+                NotificationClientService, // Notification microservice
+            ],
+            providers: [
+                OrderService,
+                PaymentService,
+                InventoryService,
+                {
+                    provide: 'PAYMENT_CONFIG',
+                    useValue: { timeout: 10000 },
+                },
+            ],
+            exports: [OrderService],
+        }),
+    ],
 })
 export class OrderModule {}
 ```
@@ -431,24 +434,24 @@ import { GrpcModule } from 'nestjs-grpc';
 
 // Global configuration
 GrpcModule.forRoot({
-  protoPath: './protos/service.proto',
-  package: 'service',
-  url: 'localhost:50051',
-})
+    protoPath: './protos/service.proto',
+    package: 'service',
+    url: 'localhost:50051',
+});
 ```
 
 #### Async Configuration
 
 ```typescript
 GrpcModule.forRootAsync({
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) => ({
-    protoPath: config.get('PROTO_PATH'),
-    package: config.get('GRPC_PACKAGE'),
-    url: config.get('GRPC_URL'),
-    secure: config.get('GRPC_SECURE') === 'true',
-  }),
-})
+    inject: [ConfigService],
+    useFactory: (config: ConfigService) => ({
+        protoPath: config.get('PROTO_PATH'),
+        package: config.get('GRPC_PACKAGE'),
+        url: config.get('GRPC_URL'),
+        secure: config.get('GRPC_SECURE') === 'true',
+    }),
+});
 ```
 
 #### Production Configuration
@@ -457,18 +460,18 @@ GrpcModule.forRootAsync({
 import { readFileSync } from 'fs';
 
 GrpcModule.forRoot({
-  protoPath: './protos/service.proto',
-  package: 'service',
-  url: 'api.example.com:443',
-  secure: true,
-  rootCerts: readFileSync('./certs/ca.crt'),
-  maxSendMessageSize: 10 * 1024 * 1024, // 10MB
-  maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
-  logging: {
-    debug: false,       // Disable debug logs in production
-    logErrors: true,    // Keep error logging enabled
-  }
-})
+    protoPath: './protos/service.proto',
+    package: 'service',
+    url: 'api.example.com:443',
+    secure: true,
+    rootCerts: readFileSync('./certs/ca.crt'),
+    maxSendMessageSize: 10 * 1024 * 1024, // 10MB
+    maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
+    logging: {
+        debug: false, // Disable debug logs in production
+        logErrors: true, // Keep error logging enabled
+    },
+});
 ```
 
 ### Server-Side Implementation
@@ -478,81 +481,81 @@ GrpcModule.forRoot({
 ```typescript
 @GrpcController('UserService')
 export class UserController {
-  constructor(
-    @InjectRepository(UserEntity)
-    private readonly userRepository: Repository<UserEntity>,
-    private readonly configService: ConfigService,
-    private readonly emailService: EmailService,
-  ) {}
+    constructor(
+        @InjectRepository(UserEntity)
+        private readonly userRepository: Repository<UserEntity>,
+        private readonly configService: ConfigService,
+        private readonly emailService: EmailService,
+    ) {}
 
-  @GrpcMethod('GetUser')
-  async getUser(request: GetUserRequest): Promise<User> {
-    const user = await this.userRepository.findOne({
-      where: { id: request.id },
-    });
+    @GrpcMethod('GetUser')
+    async getUser(request: GetUserRequest): Promise<User> {
+        const user = await this.userRepository.findOne({
+            where: { id: request.id },
+        });
 
-    if (!user) {
-      throw GrpcException.notFound('User not found');
+        if (!user) {
+            throw GrpcException.notFound('User not found');
+        }
+
+        return {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+        };
     }
 
-    return {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-    };
-  }
+    @GrpcMethod('CreateUser')
+    async createUser(request: CreateUserRequest): Promise<User> {
+        // Validation
+        if (!request.name?.trim()) {
+            throw GrpcException.invalidArgument('Name is required');
+        }
 
-  @GrpcMethod('CreateUser')
-  async createUser(request: CreateUserRequest): Promise<User> {
-    // Validation
-    if (!request.name?.trim()) {
-      throw GrpcException.invalidArgument('Name is required');
+        if (!request.email?.includes('@')) {
+            throw GrpcException.invalidArgument('Invalid email format');
+        }
+
+        // Check if user exists
+        const existingUser = await this.userRepository.findOne({
+            where: { email: request.email },
+        });
+
+        if (existingUser) {
+            throw GrpcException.alreadyExists('User with this email already exists');
+        }
+
+        // Create user
+        const user = this.userRepository.create({
+            name: request.name,
+            email: request.email,
+            createdAt: new Date(),
+        });
+
+        const savedUser = await this.userRepository.save(user);
+
+        // Send welcome email using injected service
+        await this.emailService.sendWelcomeEmail(savedUser.email, savedUser.name);
+
+        return {
+            id: savedUser.id,
+            name: savedUser.name,
+            email: savedUser.email,
+        };
     }
 
-    if (!request.email?.includes('@')) {
-      throw GrpcException.invalidArgument('Invalid email format');
+    @GrpcMethod({ methodName: 'StreamUsers', streaming: true })
+    streamUsers(request: StreamUsersRequest): Observable<User> {
+        // Stream users from database
+        return from(this.userRepository.find()).pipe(
+            mergeMap(users => from(users)),
+            map(user => ({
+                id: user.id,
+                name: user.name,
+                email: user.email,
+            })),
+        );
     }
-
-    // Check if user exists
-    const existingUser = await this.userRepository.findOne({
-      where: { email: request.email },
-    });
-
-    if (existingUser) {
-      throw GrpcException.alreadyExists('User with this email already exists');
-    }
-
-    // Create user
-    const user = this.userRepository.create({
-      name: request.name,
-      email: request.email,
-      createdAt: new Date(),
-    });
-
-    const savedUser = await this.userRepository.save(user);
-
-    // Send welcome email using injected service
-    await this.emailService.sendWelcomeEmail(savedUser.email, savedUser.name);
-
-    return {
-      id: savedUser.id,
-      name: savedUser.name,
-      email: savedUser.email,
-    };
-  }
-
-  @GrpcMethod({ methodName: 'StreamUsers', streaming: true })
-  streamUsers(request: StreamUsersRequest): Observable<User> {
-    // Stream users from database
-    return from(this.userRepository.find()).pipe(
-      mergeMap(users => from(users)),
-      map(user => ({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      }))
-    );
-  }
 }
 ```
 
@@ -587,33 +590,33 @@ async getUser(request: GetUserRequest, metadata: Metadata): Promise<User> {
 ```typescript
 @GrpcService('UserService')
 export class UserClientService {
-  // Auto-populated methods
-  getUser: (request: GetUserRequest) => Promise<User>;
-  createUser: (request: CreateUserRequest) => Promise<User>;
-  streamUsers: (request: StreamUsersRequest) => Observable<User>;
+    // Auto-populated methods
+    getUser: (request: GetUserRequest) => Promise<User>;
+    createUser: (request: CreateUserRequest) => Promise<User>;
+    streamUsers: (request: StreamUsersRequest) => Observable<User>;
 }
 
 // Usage in another service
 @Injectable()
 export class ProfileService {
-  constructor(
-    private readonly userClient: UserClientService,
-    @InjectRepository(ProfileEntity)
-    private readonly profileRepository: Repository<ProfileEntity>,
-  ) {}
+    constructor(
+        private readonly userClient: UserClientService,
+        @InjectRepository(ProfileEntity)
+        private readonly profileRepository: Repository<ProfileEntity>,
+    ) {}
 
-  async createProfile(userId: string, profileData: any) {
-    // Get user via gRPC
-    const user = await this.userClient.getUser({ id: userId });
+    async createProfile(userId: string, profileData: any) {
+        // Get user via gRPC
+        const user = await this.userClient.getUser({ id: userId });
 
-    // Create profile in local database
-    const profile = this.profileRepository.create({
-      userId: user.id,
-      ...profileData,
-    });
+        // Create profile in local database
+        const profile = this.profileRepository.create({
+            userId: user.id,
+            ...profileData,
+        });
 
-    return this.profileRepository.save(profile);
-  }
+        return this.profileRepository.save(profile);
+    }
 }
 ```
 
@@ -624,14 +627,14 @@ import { InjectGrpcClient } from 'nestjs-grpc';
 
 @Injectable()
 export class AppService {
-  constructor(
-    @InjectGrpcClient('UserService') private userClient: any,
-    @InjectGrpcClient('AuthService') private authClient: any,
-  ) {}
+    constructor(
+        @InjectGrpcClient('UserService') private userClient: any,
+        @InjectGrpcClient('AuthService') private authClient: any,
+    ) {}
 
-  async getUser(id: string) {
-    return this.userClient.getUser({ id });
-  }
+    async getUser(id: string) {
+        return this.userClient.getUser({ id });
+    }
 }
 ```
 
@@ -639,16 +642,16 @@ export class AppService {
 
 ```typescript
 @GrpcService({
-  serviceName: 'UserService',
-  url: 'user-service:50051', // Custom URL
-  clientOptions: {
-    timeout: 10000, // 10 second timeout
-    maxRetries: 5,
-    secure: true,
-  },
+    serviceName: 'UserService',
+    url: 'user-service:50051', // Custom URL
+    clientOptions: {
+        timeout: 10000, // 10 second timeout
+        maxRetries: 5,
+        secure: true,
+    },
 })
 export class CustomUserClientService {
-  // Methods auto-populated
+    // Methods auto-populated
 }
 ```
 
@@ -666,14 +669,14 @@ throw GrpcException.permissionDenied('Access denied');
 
 // Custom error with details
 throw new GrpcException({
-  code: GrpcErrorCode.INVALID_ARGUMENT,
-  message: 'Validation failed',
-  details: {
-    field: 'email',
-    reason: 'format',
-    provided: request.email
-  },
-  metadata: { 'retry-after': '60' },
+    code: GrpcErrorCode.INVALID_ARGUMENT,
+    message: 'Validation failed',
+    details: {
+        field: 'email',
+        reason: 'format',
+        provided: request.email,
+    },
+    metadata: { 'retry-after': '60' },
 });
 ```
 
@@ -681,16 +684,18 @@ throw new GrpcException({
 
 ```typescript
 try {
-  const user = await this.userClient.getUser({ id });
-  return user;
+    const user = await this.userClient.getUser({ id });
+    return user;
 } catch (error) {
-  if (error.code === 5) { // NOT_FOUND
-    throw new NotFoundException('User not found');
-  }
-  if (error.code === 3) { // INVALID_ARGUMENT
-    throw new BadRequestException(error.message);
-  }
-  throw new InternalServerErrorException('Service error');
+    if (error.code === 5) {
+        // NOT_FOUND
+        throw new NotFoundException('User not found');
+    }
+    if (error.code === 3) {
+        // INVALID_ARGUMENT
+        throw new BadRequestException(error.message);
+    }
+    throw new InternalServerErrorException('Service error');
 }
 ```
 
@@ -796,27 +801,27 @@ npx nestjs-grpc generate \
 ```typescript
 // Generated interfaces
 export interface User {
-  id?: string;
-  name?: string;
-  email?: string;
+    id?: string;
+    name?: string;
+    email?: string;
 }
 
 export interface GetUserRequest {
-  id?: string;
+    id?: string;
 }
 
 // Generated client interface
 export interface UserServiceClient {
-  getUser(request: GetUserRequest, metadata?: Metadata): Promise<User>;
-  createUser(request: CreateUserRequest, metadata?: Metadata): Promise<User>;
-  streamUsers(request: StreamUsersRequest, metadata?: Metadata): Observable<User>;
+    getUser(request: GetUserRequest, metadata?: Metadata): Promise<User>;
+    createUser(request: CreateUserRequest, metadata?: Metadata): Promise<User>;
+    streamUsers(request: StreamUsersRequest, metadata?: Metadata): Observable<User>;
 }
 
 // Generated controller interface
 export interface UserServiceInterface {
-  getUser(request: GetUserRequest): Promise<User> | Observable<User>;
-  createUser(request: CreateUserRequest): Promise<User> | Observable<User>;
-  streamUsers(request: StreamUsersRequest): Observable<User>;
+    getUser(request: GetUserRequest): Promise<User> | Observable<User>;
+    createUser(request: CreateUserRequest): Promise<User> | Observable<User>;
+    streamUsers(request: StreamUsersRequest): Observable<User>;
 }
 ```
 
@@ -827,112 +832,112 @@ export interface UserServiceInterface {
 ```typescript
 // order/order.module.ts
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([OrderEntity, OrderItemEntity]),
-    ConfigModule,
+    imports: [
+        TypeOrmModule.forFeature([OrderEntity, OrderItemEntity]),
+        ConfigModule,
 
-    GrpcModule.forFeature({
-      controllers: [OrderController],
-      services: [
-        PaymentClientService,
-        InventoryClientService,
-        UserClientService,
-        NotificationClientService,
-      ],
-      providers: [
-        OrderService,
-        {
-          provide: 'ORDER_CONFIG',
-          useFactory: (config: ConfigService) => ({
-            maxRetries: config.get('ORDER_MAX_RETRIES', 3),
-            timeout: config.get('ORDER_TIMEOUT', 30000),
-          }),
-          inject: [ConfigService],
-        },
-      ],
-    }),
-  ],
+        GrpcModule.forFeature({
+            controllers: [OrderController],
+            services: [
+                PaymentClientService,
+                InventoryClientService,
+                UserClientService,
+                NotificationClientService,
+            ],
+            providers: [
+                OrderService,
+                {
+                    provide: 'ORDER_CONFIG',
+                    useFactory: (config: ConfigService) => ({
+                        maxRetries: config.get('ORDER_MAX_RETRIES', 3),
+                        timeout: config.get('ORDER_TIMEOUT', 30000),
+                    }),
+                    inject: [ConfigService],
+                },
+            ],
+        }),
+    ],
 })
 export class OrderModule {}
 
 // order/order.controller.ts
 @GrpcController('OrderService')
 export class OrderController {
-  constructor(
-    @InjectRepository(OrderEntity)
-    private readonly orderRepository: Repository<OrderEntity>,
-    private readonly paymentClient: PaymentClientService,
-    private readonly inventoryClient: InventoryClientService,
-    private readonly userClient: UserClientService,
-    private readonly notificationClient: NotificationClientService,
-    @Inject('ORDER_CONFIG') private readonly orderConfig: any,
-  ) {}
+    constructor(
+        @InjectRepository(OrderEntity)
+        private readonly orderRepository: Repository<OrderEntity>,
+        private readonly paymentClient: PaymentClientService,
+        private readonly inventoryClient: InventoryClientService,
+        private readonly userClient: UserClientService,
+        private readonly notificationClient: NotificationClientService,
+        @Inject('ORDER_CONFIG') private readonly orderConfig: any,
+    ) {}
 
-  @GrpcMethod('CreateOrder')
-  async createOrder(request: CreateOrderRequest): Promise<Order> {
-    // Get user
-    const user = await this.userClient.getUser({ id: request.userId });
+    @GrpcMethod('CreateOrder')
+    async createOrder(request: CreateOrderRequest): Promise<Order> {
+        // Get user
+        const user = await this.userClient.getUser({ id: request.userId });
 
-    // Check inventory
-    const inventory = await this.inventoryClient.checkAvailability({
-      productId: request.productId,
-      quantity: request.quantity,
-    });
+        // Check inventory
+        const inventory = await this.inventoryClient.checkAvailability({
+            productId: request.productId,
+            quantity: request.quantity,
+        });
 
-    if (!inventory.available) {
-      throw GrpcException.failedPrecondition('Product not available');
+        if (!inventory.available) {
+            throw GrpcException.failedPrecondition('Product not available');
+        }
+
+        // Process payment
+        const payment = await this.paymentClient.processPayment({
+            amount: request.amount,
+            currency: request.currency,
+            userId: request.userId,
+        });
+
+        if (!payment.success) {
+            throw GrpcException.failedPrecondition('Payment failed');
+        }
+
+        // Create order
+        const order = this.orderRepository.create({
+            userId: request.userId,
+            productId: request.productId,
+            quantity: request.quantity,
+            amount: request.amount,
+            paymentId: payment.paymentId,
+            status: 'confirmed',
+        });
+
+        const savedOrder = await this.orderRepository.save(order);
+
+        // Reserve inventory
+        await this.inventoryClient.reserveItems({
+            productId: request.productId,
+            quantity: request.quantity,
+            orderId: savedOrder.id,
+        });
+
+        // Send notification
+        await this.notificationClient.sendOrderConfirmation({
+            userId: request.userId,
+            orderId: savedOrder.id,
+        });
+
+        return {
+            id: savedOrder.id,
+            userId: savedOrder.userId,
+            productId: savedOrder.productId,
+            quantity: savedOrder.quantity,
+            amount: savedOrder.amount,
+            status: savedOrder.status,
+        };
     }
 
-    // Process payment
-    const payment = await this.paymentClient.processPayment({
-      amount: request.amount,
-      currency: request.currency,
-      userId: request.userId,
-    });
-
-    if (!payment.success) {
-      throw GrpcException.failedPrecondition('Payment failed');
+    @GrpcMethod({ methodName: 'TrackOrder', streaming: true })
+    trackOrder(request: TrackOrderRequest): Observable<OrderStatus> {
+        return this.orderService.trackOrderUpdates(request.orderId);
     }
-
-    // Create order
-    const order = this.orderRepository.create({
-      userId: request.userId,
-      productId: request.productId,
-      quantity: request.quantity,
-      amount: request.amount,
-      paymentId: payment.paymentId,
-      status: 'confirmed',
-    });
-
-    const savedOrder = await this.orderRepository.save(order);
-
-    // Reserve inventory
-    await this.inventoryClient.reserveItems({
-      productId: request.productId,
-      quantity: request.quantity,
-      orderId: savedOrder.id,
-    });
-
-    // Send notification
-    await this.notificationClient.sendOrderConfirmation({
-      userId: request.userId,
-      orderId: savedOrder.id,
-    });
-
-    return {
-      id: savedOrder.id,
-      userId: savedOrder.userId,
-      productId: savedOrder.productId,
-      quantity: savedOrder.quantity,
-      amount: savedOrder.amount,
-      status: savedOrder.status,
-    };
-  }
-
-  @GrpcMethod({ methodName: 'TrackOrder', streaming: true })
-  trackOrder(request: TrackOrderRequest): Observable<OrderStatus> {
-    return this.orderService.trackOrderUpdates(request.orderId);
-  }
 }
 ```
 
@@ -942,49 +947,49 @@ export class OrderController {
 // auth/auth.controller.ts
 @GrpcController('AuthService')
 export class AuthController {
-  constructor(
-    @InjectRepository(AuthEntity)
-    private readonly authRepository: Repository<AuthEntity>,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-    private readonly userClient: UserClientService,
-  ) {}
+    constructor(
+        @InjectRepository(AuthEntity)
+        private readonly authRepository: Repository<AuthEntity>,
+        private readonly jwtService: JwtService,
+        private readonly configService: ConfigService,
+        private readonly userClient: UserClientService,
+    ) {}
 
-  @GrpcMethod('Login')
-  async login(request: LoginRequest): Promise<LoginResponse> {
-    const user = await this.userClient.getUserByEmail({ email: request.email });
+    @GrpcMethod('Login')
+    async login(request: LoginRequest): Promise<LoginResponse> {
+        const user = await this.userClient.getUserByEmail({ email: request.email });
 
-    if (!user) {
-      throw GrpcException.unauthenticated('Invalid credentials');
+        if (!user) {
+            throw GrpcException.unauthenticated('Invalid credentials');
+        }
+
+        // Check password (using bcrypt)
+        const isValid = await bcrypt.compare(request.password, user.passwordHash);
+
+        if (!isValid) {
+            throw GrpcException.unauthenticated('Invalid credentials');
+        }
+
+        // Generate JWT
+        const token = this.jwtService.sign({
+            sub: user.id,
+            email: user.email,
+        });
+
+        return { token, user };
     }
 
-    // Check password (using bcrypt)
-    const isValid = await bcrypt.compare(request.password, user.passwordHash);
+    @GrpcMethod('ValidateToken')
+    async validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse> {
+        try {
+            const payload = this.jwtService.verify(request.token);
+            const user = await this.userClient.getUser({ id: payload.sub });
 
-    if (!isValid) {
-      throw GrpcException.unauthenticated('Invalid credentials');
+            return { valid: true, user };
+        } catch {
+            return { valid: false };
+        }
     }
-
-    // Generate JWT
-    const token = this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-    });
-
-    return { token, user };
-  }
-
-  @GrpcMethod('ValidateToken')
-  async validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse> {
-    try {
-      const payload = this.jwtService.verify(request.token);
-      const user = await this.userClient.getUser({ id: payload.sub });
-
-      return { valid: true, user };
-    } catch {
-      return { valid: false };
-    }
-  }
 }
 ```
 
@@ -994,55 +999,55 @@ export class AuthController {
 // chat/chat.controller.ts
 @GrpcController('ChatService')
 export class ChatController {
-  private rooms = new Map<string, Subject<ChatMessage>>();
+    private rooms = new Map<string, Subject<ChatMessage>>();
 
-  constructor(
-    @InjectRepository(MessageEntity)
-    private readonly messageRepository: Repository<MessageEntity>,
-    private readonly userClient: UserClientService,
-  ) {}
+    constructor(
+        @InjectRepository(MessageEntity)
+        private readonly messageRepository: Repository<MessageEntity>,
+        private readonly userClient: UserClientService,
+    ) {}
 
-  @GrpcMethod('SendMessage')
-  async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
-    // Validate user
-    const user = await this.userClient.getUser({ id: request.userId });
+    @GrpcMethod('SendMessage')
+    async sendMessage(request: SendMessageRequest): Promise<SendMessageResponse> {
+        // Validate user
+        const user = await this.userClient.getUser({ id: request.userId });
 
-    // Save message to database
-    const message = this.messageRepository.create({
-      id: uuid(),
-      roomId: request.roomId,
-      userId: request.userId,
-      content: request.content,
-      timestamp: new Date(),
-    });
+        // Save message to database
+        const message = this.messageRepository.create({
+            id: uuid(),
+            roomId: request.roomId,
+            userId: request.userId,
+            content: request.content,
+            timestamp: new Date(),
+        });
 
-    const savedMessage = await this.messageRepository.save(message);
+        const savedMessage = await this.messageRepository.save(message);
 
-    // Broadcast to room subscribers
-    const roomSubject = this.getRoomSubject(request.roomId);
-    roomSubject.next({
-      id: savedMessage.id,
-      roomId: savedMessage.roomId,
-      userId: savedMessage.userId,
-      userName: user.name,
-      content: savedMessage.content,
-      timestamp: savedMessage.timestamp.getTime(),
-    });
+        // Broadcast to room subscribers
+        const roomSubject = this.getRoomSubject(request.roomId);
+        roomSubject.next({
+            id: savedMessage.id,
+            roomId: savedMessage.roomId,
+            userId: savedMessage.userId,
+            userName: user.name,
+            content: savedMessage.content,
+            timestamp: savedMessage.timestamp.getTime(),
+        });
 
-    return { messageId: savedMessage.id, success: true };
-  }
-
-  @GrpcMethod({ methodName: 'JoinRoom', streaming: true })
-  joinRoom(request: JoinRoomRequest): Observable<ChatMessage> {
-    return this.getRoomSubject(request.roomId).asObservable();
-  }
-
-  private getRoomSubject(roomId: string): Subject<ChatMessage> {
-    if (!this.rooms.has(roomId)) {
-      this.rooms.set(roomId, new Subject<ChatMessage>());
+        return { messageId: savedMessage.id, success: true };
     }
-    return this.rooms.get(roomId);
-  }
+
+    @GrpcMethod({ methodName: 'JoinRoom', streaming: true })
+    joinRoom(request: JoinRoomRequest): Observable<ChatMessage> {
+        return this.getRoomSubject(request.roomId).asObservable();
+    }
+
+    private getRoomSubject(roomId: string): Subject<ChatMessage> {
+        if (!this.rooms.has(roomId)) {
+            this.rooms.set(roomId, new Subject<ChatMessage>());
+        }
+        return this.rooms.get(roomId);
+    }
 }
 ```
 
@@ -1117,27 +1122,27 @@ async createUser(request: CreateUserRequest): Promise<User> {
 ```typescript
 // ✅ Good: Centralized configuration
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
-    }),
+    imports: [
+        ConfigModule.forRoot({
+            isGlobal: true,
+            envFilePath: ['.env.local', '.env'],
+        }),
 
-    GrpcModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        protoPath: config.get('GRPC_PROTO_PATH'),
-        package: config.get('GRPC_PACKAGE'),
-        url: config.get('GRPC_URL'),
-        secure: config.get('NODE_ENV') === 'production',
-        maxSendMessageSize: config.get('GRPC_MAX_MESSAGE_SIZE', 4 * 1024 * 1024),
-        logging: {
-          debug: config.get('NODE_ENV') === 'development',
-          logErrors: true,
-        }
-      }),
-    }),
-  ],
+        GrpcModule.forRootAsync({
+            inject: [ConfigService],
+            useFactory: (config: ConfigService) => ({
+                protoPath: config.get('GRPC_PROTO_PATH'),
+                package: config.get('GRPC_PACKAGE'),
+                url: config.get('GRPC_URL'),
+                secure: config.get('NODE_ENV') === 'production',
+                maxSendMessageSize: config.get('GRPC_MAX_MESSAGE_SIZE', 4 * 1024 * 1024),
+                logging: {
+                    debug: config.get('NODE_ENV') === 'development',
+                    logErrors: true,
+                },
+            }),
+        }),
+    ],
 })
 export class AppModule {}
 ```
@@ -1147,66 +1152,66 @@ export class AppModule {}
 ```typescript
 // ✅ Good: Comprehensive testing setup
 describe('AuthController', () => {
-  let controller: AuthController;
-  let userClient: UserClientService;
-  let authRepository: Repository<AuthEntity>;
+    let controller: AuthController;
+    let userClient: UserClientService;
+    let authRepository: Repository<AuthEntity>;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      controllers: [AuthController],
-      providers: [
-        {
-          provide: getRepositoryToken(AuthEntity),
-          useValue: {
-            findOne: jest.fn(),
-            create: jest.fn(),
-            save: jest.fn(),
-          },
-        },
-        {
-          provide: UserClientService,
-          useValue: {
-            getUserByEmail: jest.fn(),
-            getUser: jest.fn(),
-          },
-        },
-        {
-          provide: JwtService,
-          useValue: {
-            sign: jest.fn(),
-            verify: jest.fn(),
-          },
-        },
-        {
-          provide: 'AUTH_CONFIG',
-          useValue: {
-            maxLoginAttempts: 5,
-            lockoutDuration: 300000,
-          },
-        },
-      ],
-    }).compile();
+    beforeEach(async () => {
+        const module: TestingModule = await Test.createTestingModule({
+            controllers: [AuthController],
+            providers: [
+                {
+                    provide: getRepositoryToken(AuthEntity),
+                    useValue: {
+                        findOne: jest.fn(),
+                        create: jest.fn(),
+                        save: jest.fn(),
+                    },
+                },
+                {
+                    provide: UserClientService,
+                    useValue: {
+                        getUserByEmail: jest.fn(),
+                        getUser: jest.fn(),
+                    },
+                },
+                {
+                    provide: JwtService,
+                    useValue: {
+                        sign: jest.fn(),
+                        verify: jest.fn(),
+                    },
+                },
+                {
+                    provide: 'AUTH_CONFIG',
+                    useValue: {
+                        maxLoginAttempts: 5,
+                        lockoutDuration: 300000,
+                    },
+                },
+            ],
+        }).compile();
 
-    controller = module.get<AuthController>(AuthController);
-    userClient = module.get<UserClientService>(UserClientService);
-    authRepository = module.get<Repository<AuthEntity>>(getRepositoryToken(AuthEntity));
-  });
-
-  it('should authenticate user successfully', async () => {
-    // Test with all dependencies properly mocked
-    const mockUser = { id: '1', email: 'test@example.com', passwordHash: 'hash' };
-
-    jest.spyOn(userClient, 'getUserByEmail').mockResolvedValue(mockUser);
-    jest.spyOn(authRepository, 'findOne').mockResolvedValue(null);
-
-    const result = await controller.login({
-      email: 'test@example.com',
-      password: 'password',
+        controller = module.get<AuthController>(AuthController);
+        userClient = module.get<UserClientService>(UserClientService);
+        authRepository = module.get<Repository<AuthEntity>>(getRepositoryToken(AuthEntity));
     });
 
-    expect(result.token).toBeDefined();
-    expect(result.user).toEqual(mockUser);
-  });
+    it('should authenticate user successfully', async () => {
+        // Test with all dependencies properly mocked
+        const mockUser = { id: '1', email: 'test@example.com', passwordHash: 'hash' };
+
+        jest.spyOn(userClient, 'getUserByEmail').mockResolvedValue(mockUser);
+        jest.spyOn(authRepository, 'findOne').mockResolvedValue(null);
+
+        const result = await controller.login({
+            email: 'test@example.com',
+            password: 'password',
+        });
+
+        expect(result.token).toBeDefined();
+        expect(result.user).toEqual(mockUser);
+    });
 });
 ```
 
@@ -1221,6 +1226,7 @@ Error: Nest can't resolve dependencies of AuthController
 ```
 
 **Solution:**
+
 - Ensure all dependencies are provided in the module
 - Add required imports to the feature module
 - Check that services are properly decorated
@@ -1250,6 +1256,7 @@ Error: Proto file not found: ./protos/user.proto
 ```
 
 **Solution:**
+
 - Check file path is correct
 - Use absolute paths: `join(__dirname, '../protos/user.proto')`
 - Verify file permissions
@@ -1261,6 +1268,7 @@ Error: Service 'UserService' not found
 ```
 
 **Solution:**
+
 - Verify service name matches proto definition
 - Check package prefix: try `'user.UserService'`
 - Ensure controller has `@GrpcController` decorator
@@ -1272,6 +1280,7 @@ Error: 14 UNAVAILABLE: No connection established
 ```
 
 **Solution:**
+
 - Verify server is running
 - Check URL format: `'localhost:50051'`
 - Ensure firewall/network access
@@ -1283,15 +1292,16 @@ Error: Please make sure that the argument at index [0] is available
 ```
 
 **Solution:**
+
 - Add TypeORM module import to feature module
 
 ```typescript
 GrpcModule.forFeature({
-  controllers: [UserController],
-  imports: [
-    TypeOrmModule.forFeature([UserEntity]), // ✅ Add this
-  ],
-})
+    controllers: [UserController],
+    imports: [
+        TypeOrmModule.forFeature([UserEntity]), // ✅ Add this
+    ],
+});
 ```
 
 ### Debugging with Logs
@@ -1301,17 +1311,18 @@ Enable debug logging to troubleshoot issues:
 ```typescript
 // Enable detailed logging for debugging
 GrpcModule.forRoot({
-  protoPath: './protos/service.proto',
-  package: 'service',
-  url: 'localhost:50051',
-  logging: {
-    debug: true,        // ✅ Enable debug logs
-    logErrors: true,    // ✅ Enable error logs
-  }
-})
+    protoPath: './protos/service.proto',
+    package: 'service',
+    url: 'localhost:50051',
+    logging: {
+        debug: true, // ✅ Enable debug logs
+        logErrors: true, // ✅ Enable error logs
+    },
+});
 ```
 
 **Debug logs will show:**
+
 - Proto file loading progress
 - Service discovery details
 - Client creation and caching
@@ -1334,17 +1345,79 @@ GRPC_URL=localhost:50051
 ```typescript
 // Use environment variables for logging
 GrpcModule.forRootAsync({
-  inject: [ConfigService],
-  useFactory: (config: ConfigService) => ({
-    protoPath: config.get('GRPC_PROTO_PATH'),
-    package: config.get('GRPC_PACKAGE'),
-    url: config.get('GRPC_URL'),
+    inject: [ConfigService],
+    useFactory: (config: ConfigService) => ({
+        protoPath: config.get('GRPC_PROTO_PATH'),
+        package: config.get('GRPC_PACKAGE'),
+        url: config.get('GRPC_URL'),
+        logging: {
+            debug: config.get('NODE_ENV') === 'development' || config.get('GRPC_DEBUG') === 'true',
+            logErrors: true,
+        },
+    }),
+});
+```
+
+## 📊 Logging Configuration
+
+The package provides comprehensive logging capabilities with configurable levels and contexts:
+
+```typescript
+GrpcModule.forRoot({
+    protoPath: './protos/auth.proto',
+    package: 'auth',
+    url: 'localhost:50051',
     logging: {
-      debug: config.get('NODE_ENV') === 'development' || config.get('GRPC_DEBUG') === 'true',
-      logErrors: true,
-    }
-  }),
-})
+        enabled: true, // Enable/disable logging (default: true)
+        level: 'log', // Log levels: 'debug', 'verbose', 'log', 'warn', 'error'
+        context: 'GrpcModule', // Custom context for logs (default: 'GrpcModule')
+        logErrors: true, // Log errors (default: true)
+        logPerformance: false, // Log performance metrics (default: false)
+        logDetails: false, // Log detailed request/response data (default: false)
+    },
+});
+```
+
+### Log Levels
+
+- **debug**: Most verbose, includes all debugging information
+- **verbose**: Includes verbose information about operations
+- **log**: General information and status updates
+- **warn**: Warning messages and non-critical issues
+- **error**: Error messages and critical failures
+
+### Performance Logging
+
+Enable performance logging to track operation timing:
+
+```typescript
+logging: {
+  logPerformance: true,
+}
+```
+
+### Detailed Logging
+
+Enable detailed logging for request/response debugging:
+
+```typescript
+logging: {
+  logDetails: true,
+  level: 'debug', // Required for detailed logging
+}
+```
+
+### Custom Logger Context
+
+Create custom logger contexts for different modules:
+
+```typescript
+// In your feature module
+const logger = new GrpcLogger({
+    context: 'AuthModule',
+    level: 'debug',
+    logPerformance: true,
+});
 ```
 
 ## 📊 Performance Tips
@@ -1355,7 +1428,7 @@ GrpcModule.forRootAsync({
 // ✅ Services automatically reuse connections
 @GrpcService('UserService')
 export class UserClientService {
-  // Client is cached and reused across requests
+    // Client is cached and reused across requests
 }
 ```
 
@@ -1363,8 +1436,8 @@ export class UserClientService {
 
 ```typescript
 GrpcModule.forRoot({
-  maxSendMessageSize: 10 * 1024 * 1024, // 10MB
-  maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
+    maxSendMessageSize: 10 * 1024 * 1024, // 10MB
+    maxReceiveMessageSize: 10 * 1024 * 1024, // 10MB
 });
 ```
 
@@ -1373,15 +1446,15 @@ GrpcModule.forRoot({
 ```typescript
 // Use proper connection pooling
 TypeOrmModule.forRoot({
-  type: 'postgres',
-  host: 'localhost',
-  port: 5432,
-  extra: {
-    max: 20,              // Maximum connections
-    min: 5,               // Minimum connections
-    idleTimeoutMillis: 30000,
-  },
-})
+    type: 'postgres',
+    host: 'localhost',
+    port: 5432,
+    extra: {
+        max: 20, // Maximum connections
+        min: 5, // Minimum connections
+        idleTimeoutMillis: 30000,
+    },
+});
 ```
 
 ### 4. Streaming for Large Data
@@ -1410,41 +1483,41 @@ getAllUsers(): Observable<User> {
 ```typescript
 // Logging options
 interface GrpcLoggingOptions {
-  debug?: boolean;        // Enable debug logging
-  logErrors?: boolean;    // Enable error logging (default: true)
+    debug?: boolean; // Enable debug logging
+    logErrors?: boolean; // Enable error logging (default: true)
 }
 
 // Feature module options
 interface GrpcFeatureOptions {
-  controllers?: Type<any>[];                    // gRPC controllers
-  services?: Type<any>[];                       // gRPC client services
-  providers?: Provider[];                       // Additional providers
-  imports?: Array<Type<any> | DynamicModule>;   // Module imports
-  exports?: Array<Type<any> | string | symbol>; // Custom exports
+    controllers?: Type<any>[]; // gRPC controllers
+    services?: Type<any>[]; // gRPC client services
+    providers?: Provider[]; // Additional providers
+    imports?: Array<Type<any> | DynamicModule>; // Module imports
+    exports?: Array<Type<any> | string | symbol>; // Custom exports
 }
 
 interface GrpcOptions {
-  protoPath: string;
-  package: string;
-  url?: string;
-  secure?: boolean;
-  maxSendMessageSize?: number;
-  maxReceiveMessageSize?: number;
-  logging?: GrpcLoggingOptions;  // Logging configuration
-  // ... additional options
+    protoPath: string;
+    package: string;
+    url?: string;
+    secure?: boolean;
+    maxSendMessageSize?: number;
+    maxReceiveMessageSize?: number;
+    logging?: GrpcLoggingOptions; // Logging configuration
+    // ... additional options
 }
 
 interface GrpcControllerOptions {
-  serviceName: string;
-  package?: string;
-  url?: string;
+    serviceName: string;
+    package?: string;
+    url?: string;
 }
 
 interface GrpcServiceOptions {
-  serviceName: string;
-  package?: string;
-  url?: string;
-  clientOptions?: Partial<GrpcClientOptions>;
+    serviceName: string;
+    package?: string;
+    url?: string;
+    clientOptions?: Partial<GrpcClientOptions>;
 }
 ```
 

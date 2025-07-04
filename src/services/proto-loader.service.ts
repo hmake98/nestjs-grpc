@@ -1,21 +1,26 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Injectable, OnModuleInit, Inject, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { glob } from 'glob';
 
 import { GRPC_OPTIONS } from '../constants';
 import { GrpcOptions } from '../interfaces';
+import { GrpcLogger } from '../utils/logger';
 import { loadProto, getServiceByName } from '../utils/proto-utils';
 
 @Injectable()
 export class ProtoLoaderService implements OnModuleInit {
-    private readonly logger = new Logger('ProtoLoader');
+    private readonly logger: GrpcLogger;
     private protoDefinition: any = null;
     private isLoaded = false;
     private loadingPromise: Promise<any> | null = null;
 
     constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {
+        this.logger = new GrpcLogger({
+            ...options.logging,
+            context: 'ProtoLoader',
+        });
         this.validateOptions();
     }
 
@@ -53,9 +58,7 @@ export class ProtoLoaderService implements OnModuleInit {
 
             this.logger.log('Proto files loaded successfully');
         } catch (error) {
-            if (this.options.logging?.logErrors !== false) {
-                this.logger.error('Failed to load proto files:', error.message);
-            }
+            this.logger.error('Failed to load proto files', error);
             throw error;
         }
     }

@@ -3,6 +3,7 @@ import tsEslintPlugin from '@typescript-eslint/eslint-plugin';
 import tsParser from '@typescript-eslint/parser';
 import importPlugin from 'eslint-plugin-import';
 import prettierPlugin from 'eslint-plugin-prettier';
+import globals from 'globals';
 import { FlatCompat } from '@eslint/eslintrc';
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -201,7 +202,31 @@ export default [
     {
         name: 'typescript/test',
         files: ['test/**/*.ts', '**/*.spec.ts', '**/*.test.ts'],
-        ...baseTypeScriptConfig,
+        languageOptions: {
+            parser: tsParser,
+            parserOptions: {
+                ecmaVersion: 'latest',
+                sourceType: 'module',
+                project: null, // Disable TypeScript project for tests
+            },
+            globals: {
+                ...globals.node,
+                ...globals.jest,
+                jest: 'readonly',
+                describe: 'readonly',
+                it: 'readonly',
+                expect: 'readonly',
+                beforeEach: 'readonly',
+                afterEach: 'readonly',
+                beforeAll: 'readonly',
+                afterAll: 'readonly',
+            },
+        },
+        plugins: {
+            '@typescript-eslint': tsEslintPlugin,
+            import: importPlugin,
+            prettier: prettierPlugin,
+        },
         linterOptions: {
             reportUnusedDisableDirectives: true,
             noInlineConfig: false,

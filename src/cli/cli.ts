@@ -6,6 +6,15 @@ import process from 'process';
 import { Command } from 'commander';
 
 import { generateCommand } from '../commands';
+import { GrpcLogger } from '../utils/logger';
+
+/**
+ * Logger for CLI
+ */
+const logger = new GrpcLogger({
+    context: 'CLI',
+    level: 'log',
+});
 
 /**
  * Safely read package version with fallback
@@ -19,13 +28,13 @@ function getPackageVersion(): string {
         const packageJson = JSON.parse(packageContent);
 
         if (!packageJson.version || typeof packageJson.version !== 'string') {
-            console.warn('Warning: Invalid version in package.json, using fallback');
+            logger.warn('Warning: Invalid version in package.json, using fallback');
             return fallbackVersion;
         }
 
         return packageJson.version;
     } catch {
-        console.warn('Warning: Could not read package version, using fallback');
+        logger.warn('Warning: Could not read package version, using fallback');
         return fallbackVersion;
     }
 }
@@ -60,22 +69,25 @@ function validateArgs(): boolean {
  */
 function setupErrorHandling(): void {
     process.on('uncaughtException', error => {
-        console.error('Fatal error:', error.message);
+        logger.error('Fatal error', error);
         process.exit(1);
     });
 
     process.on('unhandledRejection', reason => {
-        console.error('Unhandled promise rejection:', reason);
+        logger.error(
+            'Unhandled promise rejection',
+            reason instanceof Error ? reason : String(reason),
+        );
         process.exit(1);
     });
 
     process.on('SIGTERM', () => {
-        console.log('Received SIGTERM, shutting down gracefully');
+        logger.log('Received SIGTERM, shutting down gracefully');
         process.exit(0);
     });
 
     process.on('SIGINT', () => {
-        console.log('Received SIGINT, shutting down gracefully');
+        logger.log('Received SIGINT, shutting down gracefully');
         process.exit(0);
     });
 }
@@ -87,18 +99,14 @@ function initializeCli(): void {
     setupErrorHandling();
 
     if (!validateArgs()) {
-        console.error('Error: Invalid arguments provided');
+        logger.error('Error: Invalid arguments provided');
         process.exit(1);
     }
 
     const program = new Command();
     const version = getPackageVersion();
 
-    program
-        .name('nestjs-grpc')
-        .description('CLI tool for NestJS gRPC package')
-        .version(version)
-        .helpOption('-h, --help', 'Display help for command');
+    program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(version);
 
     program
         .command('generate')
@@ -121,7 +129,7 @@ function initializeCli(): void {
             try {
                 await generateCommand(options);
             } catch (error) {
-                console.error('Command failed:', error.message);
+                logger.error('Command failed', error instanceof Error ? error : String(error));
                 process.exit(1);
             }
         });
@@ -135,7 +143,7 @@ function initializeCli(): void {
             program.outputHelp();
         }
     } catch (error) {
-        console.error('Error parsing arguments:', error.message);
+        logger.error('Error parsing arguments', error instanceof Error ? error : String(error));
         process.exit(1);
     }
 }

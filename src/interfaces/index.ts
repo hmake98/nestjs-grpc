@@ -1,22 +1,53 @@
 import type { GrpcErrorCode } from '../constants';
 import type { Options } from '@grpc/proto-loader';
-import type { DynamicModule, ModuleMetadata, Provider, Type } from '@nestjs/common';
+import type { DynamicModule, ModuleMetadata, Provider, Type, LogLevel } from '@nestjs/common';
 
 /**
- * Simple logging options for gRPC debugging
+ * Enhanced logging options for gRPC module
  */
 export interface GrpcLoggingOptions {
     /**
-     * Enable debug logging
+     * Enable/disable logging
+     * @default true
+     */
+    enabled?: boolean;
+
+    /**
+     * Log level (debug, verbose, log, warn, error)
+     * @default 'log'
+     */
+    level?: LogLevel;
+
+    /**
+     * Custom context for logger
+     * @default 'GrpcModule'
+     */
+    context?: string;
+
+    /**
+     * Enable debug logging (legacy compatibility)
      * @default false
+     * @deprecated Use level: 'debug' instead
      */
     debug?: boolean;
 
     /**
-     * Log gRPC errors
+     * Enable error logging
      * @default true
      */
     logErrors?: boolean;
+
+    /**
+     * Enable performance logging
+     * @default false
+     */
+    logPerformance?: boolean;
+
+    /**
+     * Enable detailed request/response logging
+     * @default false
+     */
+    logDetails?: boolean;
 }
 
 /**
