@@ -124,7 +124,9 @@ describe('GrpcClientService', () => {
 
         it('should throw error if proto loader service is not available', () => {
             const serviceWithoutProto = new GrpcClientService(mockOptions, null as any);
-            expect(() => serviceWithoutProto.onModuleInit()).toThrow('ProtoLoaderService is not available');
+            expect(() => serviceWithoutProto.onModuleInit()).toThrow(
+                'ProtoLoaderService is not available',
+            );
         });
 
         it('should handle initialization errors', () => {
@@ -146,89 +148,149 @@ describe('GrpcClientService', () => {
 
         it('should handle stream cancellation errors', () => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            const mockStream = { cancel: jest.fn().mockImplementation(() => { throw new Error('Cancel failed'); }) };
-            
+            const mockStream = {
+                cancel: jest.fn().mockImplementation(() => {
+                    throw new Error('Cancel failed');
+                }),
+            };
+
             // Access private activeStreams through type assertion
             (service as any).activeStreams.add(mockStream);
-            
+
             service.onModuleDestroy();
-            
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error cancelling stream'));
+
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Error cancelling stream'),
+            );
             consoleSpy.mockRestore();
         });
 
         it('should handle client close errors', () => {
-            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            const mockClient = { close: jest.fn().mockImplementation(() => { throw new Error('Close failed'); }) };
-            
+            const loggerSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation();
+            const mockClient = {
+                close: jest.fn().mockImplementation(() => {
+                    throw new Error('Close failed');
+                }),
+            };
+
             // Access private clients through type assertion
-            (service as any).clients.set('test-key', { client: mockClient, createdAt: Date.now(), lastUsed: Date.now(), config: 'test', serviceName: 'TestService' });
-            
+            (service as any).clients.set('test-key', {
+                client: mockClient,
+                createdAt: Date.now(),
+                lastUsed: Date.now(),
+                config: 'test',
+                serviceName: 'TestService',
+            });
+
             service.onModuleDestroy();
-            
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error closing client'));
-            consoleSpy.mockRestore();
+
+            expect(loggerSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Error closing client'),
+                expect.any(Error),
+            );
+            loggerSpy.mockRestore();
         });
 
         it('should handle cleanup errors gracefully', () => {
-            const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-            
+            const loggerSpy = jest.spyOn((service as any).logger, 'error').mockImplementation();
+
             // Mock clearInterval to throw an error
             jest.spyOn(global, 'clearInterval').mockImplementation(() => {
                 throw new Error('clearInterval failed');
             });
-            
+
             service.onModuleDestroy();
-            
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error during GrpcClientService cleanup'));
-            consoleSpy.mockRestore();
+
+            expect(loggerSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Error during GrpcClientService cleanup'),
+                expect.any(Error),
+            );
+            loggerSpy.mockRestore();
         });
     });
 
     describe('cleanupStaleClients', () => {
-        it('should cleanup stale clients', (done) => {
+        it('should cleanup stale clients', done => {
             const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
             const mockClient = { close: jest.fn() };
             const staleTime = Date.now() - 10 * 60 * 1000; // 10 minutes ago
-            
+
+            // Mock setInterval to return immediately
+            const originalSetInterval = global.setInterval;
+            global.setInterval = jest.fn().mockImplementation(callback => {
+                callback();
+                return 123;
+            });
+
             // Access private clients and add a stale client
             (service as any).clients.set('stale-key', {
                 client: mockClient,
                 createdAt: staleTime,
                 lastUsed: staleTime,
                 config: 'test',
-                serviceName: 'TestService'
+                serviceName: 'TestService',
             });
-            
-            service.onModuleInit();
-            
+
+            try {
+                service.onModuleInit();
+            } catch (error) {
+                // Restore setInterval
+                global.setInterval = originalSetInterval;
+                throw error;
+            }
+
             // Wait for cleanup to run
             setTimeout(() => {
                 expect(mockClient.close).toHaveBeenCalled();
                 expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Cleaned up'));
                 consoleSpy.mockRestore();
+
+                // Restore setInterval
+                global.setInterval = originalSetInterval;
                 done();
             }, 100);
         });
 
-        it('should handle client close errors during cleanup', (done) => {
+        it('should handle client close errors during cleanup', done => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            const mockClient = { close: jest.fn().mockImplementation(() => { throw new Error('Close failed'); }) };
+            const mockClient = {
+                close: jest.fn().mockImplementation(() => {
+                    throw new Error('Close failed');
+                }),
+            };
             const staleTime = Date.now() - 10 * 60 * 1000;
-            
+
+            // Mock setInterval to return immediately
+            const originalSetInterval = global.setInterval;
+            global.setInterval = jest.fn().mockImplementation(callback => {
+                callback();
+                return 123;
+            });
+
             (service as any).clients.set('stale-key', {
                 client: mockClient,
                 createdAt: staleTime,
                 lastUsed: staleTime,
                 config: 'test',
-                serviceName: 'TestService'
+                serviceName: 'TestService',
             });
-            
-            service.onModuleInit();
-            
+
+            try {
+                service.onModuleInit();
+            } catch (error) {
+                // Restore setInterval
+                global.setInterval = originalSetInterval;
+                throw error;
+            }
+
             setTimeout(() => {
-                expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error closing stale client'));
+                expect(consoleSpy).toHaveBeenCalledWith(
+                    expect.stringContaining('Error closing stale client'),
+                );
                 consoleSpy.mockRestore();
+
+                // Restore setInterval
+                global.setInterval = originalSetInterval;
                 done();
             }, 100);
         });
@@ -242,7 +304,7 @@ describe('GrpcClientService', () => {
                 nested: {
                     DeepService: jest.fn(),
                     NotAService: 'string',
-                }
+                },
             };
 
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
@@ -263,7 +325,7 @@ describe('GrpcClientService', () => {
         });
 
         it('should handle errors gracefully', () => {
-            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            const loggerSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation();
             mockProtoLoaderService.getProtoDefinition.mockImplementation(() => {
                 throw new Error('Proto not loaded');
             });
@@ -271,15 +333,18 @@ describe('GrpcClientService', () => {
             const services = service.getAvailableServices();
 
             expect(services).toEqual([]);
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error getting available services'));
-            consoleSpy.mockRestore();
+            expect(loggerSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Error getting available services'),
+                expect.any(String),
+            );
+            loggerSpy.mockRestore();
         });
 
         it('should handle discovery errors', () => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
             const circularRef: any = {};
             circularRef.self = circularRef;
-            
+
             mockProtoLoaderService.getProtoDefinition.mockReturnValue({
                 TestService: jest.fn(),
                 circular: circularRef,
@@ -337,10 +402,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = {
@@ -394,10 +459,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = {
@@ -419,18 +484,18 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = {
                 test: {
                     package: {
                         TestService: mockServiceConstructor,
-                    }
-                }
+                    },
+                },
             };
 
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
@@ -446,16 +511,16 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = {
                 nested: {
                     TestService: mockServiceConstructor,
-                }
+                },
             };
 
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
@@ -473,7 +538,7 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('TestService')).toThrow(
-                'is not a valid constructor function'
+                'is not a valid constructor function',
             );
         });
 
@@ -489,7 +554,7 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('TestService', { url: '' })).toThrow(
-                'Failed to create gRPC client for service TestService'
+                'Failed to create gRPC client for service TestService',
             );
         });
 
@@ -499,16 +564,15 @@ describe('GrpcClientService', () => {
                 cancel: jest.fn(),
             };
 
-            const mockServiceConstructor = jest.fn().mockReturnValue({
+            const mockServiceConstructor: any = jest.fn().mockReturnValue({
                 streamMethod: jest.fn().mockReturnValue(mockCall),
-                constructor: {
-                    service: {
-                        methods: {
-                            streamMethod: { requestStream: false, responseStream: true }
-                        }
-                    }
-                }
             });
+
+            mockServiceConstructor.service = {
+                methods: {
+                    streamMethod: { requestStream: false, responseStream: true },
+                },
+            };
 
             const { getServiceMethods } = require('../../src/utils/proto-utils');
             getServiceMethods.mockReturnValue(['streamMethod']);
@@ -520,15 +584,15 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client = service.create('TestService') as any;
-            
+
             expect(client.streamMethod).toBeDefined();
-            
+
             // Test streaming method
             const observable = client.streamMethod({ test: 'data' });
             expect(observable).toBeInstanceOf(Observable);
         });
 
-        it('should handle unary method timeout', (done) => {
+        it('should handle unary method timeout', done => {
             const mockCall = {
                 on: jest.fn(),
                 cancel: jest.fn(),
@@ -542,10 +606,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            unaryMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            unaryMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const { getServiceMethods } = require('../../src/utils/proto-utils');
@@ -558,14 +622,14 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client = service.create('TestService', { timeout: 100 }) as any;
-            
+
             client.unaryMethod({ test: 'data' }).catch((error: any) => {
                 expect(error.message).toContain('timed out');
                 done();
             });
         });
 
-        it('should handle unary method errors', (done) => {
+        it('should handle unary method errors', done => {
             const mockCall = {
                 on: jest.fn(),
                 cancel: jest.fn(),
@@ -579,10 +643,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            unaryMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            unaryMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const { getServiceMethods } = require('../../src/utils/proto-utils');
@@ -595,7 +659,7 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client = service.create('TestService') as any;
-            
+
             client.unaryMethod({ test: 'data' }).catch((error: any) => {
                 expect(error.message).toContain('gRPC call failed');
                 done();
@@ -616,7 +680,7 @@ describe('GrpcClientService', () => {
         });
 
         it('should handle no methods found warning', () => {
-            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            const loggerSpy = jest.spyOn((service as any).logger, 'warn').mockImplementation();
             const { getServiceMethods } = require('../../src/utils/proto-utils');
             getServiceMethods.mockReturnValue([]);
 
@@ -626,8 +690,8 @@ describe('GrpcClientService', () => {
 
             service.create('TestService');
 
-            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('No methods found'));
-            consoleSpy.mockRestore();
+            expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('No methods found'));
+            loggerSpy.mockRestore();
         });
     });
 
@@ -638,10 +702,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = {
@@ -671,9 +735,7 @@ describe('GrpcClientService', () => {
         it('should handle service lookup with null proto definition', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(null);
 
-            expect(() => service.create('TestService')).toThrow(
-                'gRPC services not loaded yet'
-            );
+            expect(() => service.create('TestService')).toThrow('gRPC services not loaded yet');
         });
 
         it('should handle findServiceByPath with invalid path', () => {
@@ -692,10 +754,10 @@ describe('GrpcClientService', () => {
                 constructor: {
                     service: {
                         methods: {
-                            testMethod: { requestStream: false, responseStream: false }
-                        }
-                    }
-                }
+                            testMethod: { requestStream: false, responseStream: false },
+                        },
+                    },
+                },
             });
 
             const mockProtoDefinition = { TestService: mockServiceConstructor };
@@ -721,7 +783,7 @@ describe('GrpcClientService', () => {
             expect(client).toBeDefined();
         });
 
-        it('should handle streaming method timeout and error paths', (done) => {
+        it('should handle streaming method timeout and error paths', done => {
             const mockCall = {
                 on: jest.fn((event, callback) => {
                     if (event === 'error') {
@@ -731,16 +793,15 @@ describe('GrpcClientService', () => {
                 cancel: jest.fn(),
             };
 
-            const mockServiceConstructor = jest.fn().mockReturnValue({
+            const mockServiceConstructor: any = jest.fn().mockReturnValue({
                 streamMethod: jest.fn().mockReturnValue(mockCall),
-                constructor: {
-                    service: {
-                        methods: {
-                            streamMethod: { requestStream: false, responseStream: true }
-                        }
-                    }
-                }
             });
+
+            mockServiceConstructor.service = {
+                methods: {
+                    streamMethod: { requestStream: false, responseStream: true },
+                },
+            };
 
             const { getServiceMethods } = require('../../src/utils/proto-utils');
             getServiceMethods.mockReturnValue(['streamMethod']);
@@ -749,14 +810,14 @@ describe('GrpcClientService', () => {
             mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client = service.create('TestService', { timeout: 100 }) as any;
-            
+
             const observable = client.streamMethod({ test: 'data' });
-            
+
             observable.subscribe({
                 error: (error: any) => {
                     expect(error.message).toContain('gRPC stream error');
                     done();
-                }
+                },
             });
         });
     });
@@ -796,17 +857,20 @@ describe('GrpcClientService', () => {
 
         it('should handle logging errors gracefully', () => {
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-            
+
             // Create service with logging disabled to test error paths
-            const serviceWithoutLogging = new GrpcClientService({
-                ...mockOptions,
-                logging: { logErrors: false }
-            }, mockProtoLoaderService);
+            const serviceWithoutLogging = new GrpcClientService(
+                {
+                    ...mockOptions,
+                    logging: { logErrors: false },
+                },
+                mockProtoLoaderService,
+            );
 
             mockProtoLoaderService.getProtoDefinition.mockReturnValue({});
 
             expect(() => serviceWithoutLogging.create('NonExistentService')).toThrow();
-            
+
             // Should not log error when logErrors is false
             expect(consoleSpy).not.toHaveBeenCalled();
             consoleSpy.mockRestore();

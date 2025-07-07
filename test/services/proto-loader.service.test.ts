@@ -110,7 +110,7 @@ describe('ProtoLoaderService', () => {
 
     describe('onModuleInit', () => {
         it('should load proto files on module init', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);
@@ -131,7 +131,7 @@ describe('ProtoLoaderService', () => {
 
     describe('load', () => {
         it('should return cached definition if already loaded', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);
@@ -144,7 +144,7 @@ describe('ProtoLoaderService', () => {
         });
 
         it('should return existing loading promise if already in progress', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);
@@ -158,7 +158,7 @@ describe('ProtoLoaderService', () => {
         });
 
         it('should handle single proto file loading', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);
@@ -173,7 +173,7 @@ describe('ProtoLoaderService', () => {
         });
 
         it('should handle directory with multiple proto files', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any);
             mockGlob.mockResolvedValue(['/test/file1.proto', '/test/file2.proto']);
@@ -186,7 +186,7 @@ describe('ProtoLoaderService', () => {
         });
 
         it('should handle glob pattern loading', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             service = new ProtoLoaderService({
                 ...mockOptions,
                 protoPath: '/test/*.proto',
@@ -222,7 +222,7 @@ describe('ProtoLoaderService', () => {
 
     describe('getProtoDefinition', () => {
         it('should return proto definition when loaded', async () => {
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);
@@ -410,7 +410,7 @@ describe('ProtoLoaderService', () => {
                 ...mockOptions,
                 logging: { debug: true },
             });
-            const mockProtoDefinition = { TestService: jest.fn() };
+            const mockProtoDefinition = { TestService: jest.fn() } as any;
             mockFs.accessSync.mockImplementation(() => {});
             mockFs.statSync.mockReturnValue({ isDirectory: () => false } as any);
             mockProtoUtils.loadProto.mockResolvedValue(mockProtoDefinition as any);

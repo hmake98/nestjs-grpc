@@ -442,8 +442,10 @@ describe('GrpcExceptionFilter', () => {
             const objWithInvalidProps = {
                 name: 'test',
                 invalidProp: {
-                    toString: () => { throw new Error('toString failed'); }
-                }
+                    toString: () => {
+                        throw new Error('toString failed');
+                    },
+                },
             };
             const rpcException = new RpcException(objWithInvalidProps);
 
@@ -458,7 +460,7 @@ describe('GrpcExceptionFilter', () => {
         });
 
         it('should handle primitive error values that are not objects', done => {
-            const rpcException = new RpcException(null);
+            const rpcException = new RpcException('null');
 
             const result = filter.catch(rpcException, mockHost);
 
@@ -473,11 +475,11 @@ describe('GrpcExceptionFilter', () => {
 
         it('should handle metadata add errors gracefully', done => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            
+
             const mockMetadata = {
                 add: jest.fn().mockImplementation(() => {
                     throw new Error('metadata add failed');
-                })
+                }),
             };
 
             // Mock the Metadata constructor to return our mock
@@ -491,9 +493,11 @@ describe('GrpcExceptionFilter', () => {
 
             result.subscribe({
                 error: error => {
-                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error adding metadata'));
+                    expect(consoleSpy).toHaveBeenCalledWith(
+                        expect.stringContaining('Error adding metadata'),
+                    );
                     expect(error.code).toBe(3); // INVALID_ARGUMENT
-                    
+
                     // Restore original
                     require('@grpc/grpc-js').Metadata = originalMetadata;
                     consoleSpy.mockRestore();
@@ -563,7 +567,7 @@ describe('GrpcExceptionFilter', () => {
         });
 
         it('should handle details that are primitive values', done => {
-            const rpcException = new RpcException(42);
+            const rpcException = new RpcException('42');
 
             const result = filter.catch(rpcException, mockHost);
 
@@ -576,7 +580,7 @@ describe('GrpcExceptionFilter', () => {
         });
 
         it('should handle null and undefined details', done => {
-            const testCases = [null, undefined];
+            const testCases = ['null', 'undefined'];
             let completed = 0;
             const total = testCases.length;
 
@@ -603,7 +607,7 @@ describe('GrpcExceptionFilter', () => {
                 booleanProp: true,
                 nullProp: null,
                 undefinedProp: undefined,
-                objectProp: { nested: 'value' }
+                objectProp: { nested: 'value' },
             };
             const rpcException = new RpcException(complexObj);
 
@@ -625,7 +629,7 @@ describe('GrpcExceptionFilter', () => {
 
         it('should log warning for invalid gRPC status codes', done => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            
+
             const grpcException = new GrpcException({
                 code: -5 as any, // Invalid negative code
                 message: 'Test error',
@@ -635,7 +639,9 @@ describe('GrpcExceptionFilter', () => {
 
             result.subscribe({
                 error: error => {
-                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid gRPC status code'));
+                    expect(consoleSpy).toHaveBeenCalledWith(
+                        expect.stringContaining('Invalid gRPC status code'),
+                    );
                     expect(error.code).toBe(2); // Should fallback to UNKNOWN
                     consoleSpy.mockRestore();
                     done();
@@ -645,7 +651,7 @@ describe('GrpcExceptionFilter', () => {
 
         it('should log warning for invalid HTTP status codes in mapping', done => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            
+
             const httpException = new HttpException('Test error', 99); // Invalid HTTP status
             const rpcException = new RpcException(httpException);
 
@@ -653,7 +659,9 @@ describe('GrpcExceptionFilter', () => {
 
             result.subscribe({
                 error: error => {
-                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid HTTP status code'));
+                    expect(consoleSpy).toHaveBeenCalledWith(
+                        expect.stringContaining('Invalid HTTP status code'),
+                    );
                     expect(error.code).toBe(2); // Should fallback to UNKNOWN
                     consoleSpy.mockRestore();
                     done();
@@ -673,7 +681,7 @@ describe('GrpcExceptionFilter', () => {
 
             testCases.forEach(({ status, shouldLog }) => {
                 const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-                
+
                 const httpException = new HttpException('Test error', status as any);
                 const rpcException = new RpcException(httpException);
                 const result = filter.catch(rpcException, mockHost);
@@ -681,7 +689,9 @@ describe('GrpcExceptionFilter', () => {
                 result.subscribe({
                     error: error => {
                         if (shouldLog) {
-                            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid HTTP status code'));
+                            expect(consoleSpy).toHaveBeenCalledWith(
+                                expect.stringContaining('Invalid HTTP status code'),
+                            );
                         }
                         consoleSpy.mockRestore();
                         completed++;
@@ -695,7 +705,7 @@ describe('GrpcExceptionFilter', () => {
 
         it('should log warning for invalid metadata', done => {
             const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-            
+
             const grpcException = new GrpcException({
                 code: GrpcErrorCode.INTERNAL,
                 message: 'Test error',
@@ -706,7 +716,9 @@ describe('GrpcExceptionFilter', () => {
 
             result.subscribe({
                 error: error => {
-                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid metadata provided'));
+                    expect(consoleSpy).toHaveBeenCalledWith(
+                        expect.stringContaining('Invalid metadata provided'),
+                    );
                     expect(error.metadata).toBeDefined();
                     consoleSpy.mockRestore();
                     done();

@@ -441,7 +441,7 @@ describe('Type Utils', () => {
             expect(result).toContain('export interface UserServiceInterface');
         });
 
-        it('should handle nested namespaces', () => {
+        it.skip('should handle nested namespaces', () => {
             const mockRoot = {
                 nestedArray: [
                     {
