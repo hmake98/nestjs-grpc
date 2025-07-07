@@ -101,6 +101,8 @@ npx nestjs-grpc generate \
 import { Module } from '@nestjs/common';
 import { GrpcModule } from 'nestjs-grpc';
 import { AuthController } from './auth.controller';
+import { UserService } from './user.service';
+import { JwtService } from '@nestjs/jwt';
 
 @Module({
     imports: [
@@ -115,7 +117,8 @@ import { AuthController } from './auth.controller';
             },
         }),
     ],
-    controllers: [AuthController],
+    controllers: [AuthController], // ✅ gRPC Controller goes here
+    providers: [UserService, JwtService], // ✅ Services go here
 })
 export class AppModule {}
 ```
@@ -124,7 +127,6 @@ export class AppModule {}
 
 ```typescript
 // auth.controller.ts
-import { Injectable } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { GrpcController, GrpcMethod, GrpcException, GrpcErrorCode } from 'nestjs-grpc';
 import {
@@ -136,6 +138,8 @@ import {
     User,
 } from './generated/auth';
 
+// Note: @GrpcController automatically applies @Injectable()
+// No need to add @Injectable() manually
 @GrpcController('AuthService')
 export class AuthController {
     constructor(
