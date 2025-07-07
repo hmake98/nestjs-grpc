@@ -286,20 +286,24 @@ export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptio
                 return;
             }
 
-            if (nested instanceof protobuf.Type || nested.constructor?.name === 'Type') {
+            if ((protobuf.Type && nested instanceof protobuf.Type) || nested.constructor?.name === 'Type') {
                 typeDefinitions += `${getMessageDefinition(nested as protobuf.Type, options)}\n`;
                 // Process nested messages
-                processNamespace(nested as protobuf.NamespaceBase, fullName);
-            } else if (nested instanceof protobuf.Service || nested.constructor?.name === 'Service') {
+                if ((nested as any).nestedArray) {
+                    processNamespace(nested as protobuf.NamespaceBase, fullName);
+                }
+            } else if ((protobuf.Service && nested instanceof protobuf.Service) || nested.constructor?.name === 'Service') {
                 // Only include client interface if explicitly enabled
                 if (options?.includeClientInterfaces !== false) {
                     typeDefinitions += `${getServiceClientDefinition(nested as protobuf.Service, options)}\n`;
                 }
                 typeDefinitions += `${getServiceInterfaceDefinition(nested as protobuf.Service, options)}\n`;
-            } else if (nested instanceof protobuf.Enum || nested.constructor?.name === 'Enum') {
+            } else if ((protobuf.Enum && nested instanceof protobuf.Enum) || nested.constructor?.name === 'Enum') {
                 typeDefinitions += `${getEnumDefinition(nested as protobuf.Enum, options)}\n`;
-            } else if (nested instanceof protobuf.Namespace) {
-                processNamespace(nested, fullName);
+            } else if ((protobuf.Namespace && nested instanceof protobuf.Namespace) || nested.constructor?.name === 'Namespace') {
+                if ((nested as any).nestedArray) {
+                    processNamespace(nested as protobuf.NamespaceBase, fullName);
+                }
             }
         });
     }
