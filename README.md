@@ -137,7 +137,6 @@ import {
 } from './generated/auth';
 
 @GrpcController('AuthService')
-@Injectable()
 export class AuthController {
     constructor(
         private readonly userService: UserService,
