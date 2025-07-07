@@ -450,3 +450,102 @@ export interface ServiceClientMetadata {
     url?: string;
     clientOptions?: Partial<GrpcClientOptions>;
 }
+
+/**
+ * Configuration options for the GrpcExceptionFilter
+ */
+export interface GrpcExceptionFilterOptions {
+    /**
+     * Enable/disable logging
+     * @default true
+     */
+    enableLogging?: boolean;
+
+    /**
+     * Maximum message length before truncation
+     * @default 1000
+     */
+    maxMessageLength?: number;
+
+    /**
+     * Custom fallback error message
+     * @default 'Internal server error occurred'
+     */
+    fallbackMessage?: string;
+
+    /**
+     * Custom fallback error code
+     * @default GrpcErrorCode.INTERNAL
+     */
+    fallbackCode?: GrpcErrorCode;
+}
+
+/**
+ * Standard gRPC error response structure
+ */
+export interface GrpcErrorResponse {
+    /**
+     * gRPC status code
+     */
+    code: number;
+
+    /**
+     * Error message
+     */
+    message: string;
+
+    /**
+     * Additional error details
+     */
+    details?: any;
+
+    /**
+     * gRPC metadata
+     */
+    metadata?: any;
+}
+
+/**
+ * Sanitized error details interface
+ */
+export interface GrpcErrorDetails {
+    /**
+     * Error value if details cannot be serialized
+     */
+    value?: string;
+
+    /**
+     * Error message if details cannot be serialized
+     */
+    error?: string;
+
+    /**
+     * Original HTTP status code if available
+     */
+    httpStatus?: number;
+
+    /**
+     * Additional error properties
+     */
+    [key: string]: any;
+}
+
+/**
+ * HTTP to gRPC status mapping interface
+ */
+export interface HttpToGrpcStatusMapping {
+    /**
+     * HTTP status code
+     */
+    httpStatus: number;
+
+    /**
+     * Corresponding gRPC status code
+     */
+    grpcStatus: number;
+
+    /**
+     * Optional description of the mapping
+     */
+    description?: string;
+}

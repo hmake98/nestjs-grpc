@@ -11,6 +11,7 @@ import { RpcException } from '@nestjs/microservices';
 import { Observable, throwError } from 'rxjs';
 
 import { GrpcErrorCode } from '../constants';
+import { GrpcErrorResponse, GrpcErrorDetails } from '../interfaces';
 
 import { GrpcException } from './grpc.exception';
 
@@ -35,7 +36,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
     /**
      * Processes the exception and converts it to gRPC format
      */
-    private processException(exception: RpcException): any {
+    private processException(exception: RpcException): GrpcErrorResponse {
         try {
             if (exception instanceof GrpcException) {
                 // Handle custom GrpcException
@@ -53,7 +54,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
     /**
      * Handles GrpcException instances
      */
-    private handleGrpcException(exception: GrpcException): any {
+    private handleGrpcException(exception: GrpcException): GrpcErrorResponse {
         try {
             const statusCode = this.validateStatusCode(exception.getCode());
             const message = this.validateMessage(exception.message);
@@ -75,7 +76,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
     /**
      * Handles generic RpcException instances
      */
-    private handleGenericRpcException(exception: RpcException): any {
+    private handleGenericRpcException(exception: RpcException): GrpcErrorResponse {
         try {
             const error = exception.getError();
             let statusCode: number;
@@ -170,7 +171,8 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
      * Validates and normalizes status codes
      */
     private validateStatusCode(code: any): number {
-        if (typeof code === 'number' && Object.values(GrpcErrorCode).includes(code)) {
+        // Check if it's a valid gRPC status code (0-16)
+        if (typeof code === 'number' && Number.isInteger(code) && code >= 0 && code <= 16) {
             return code;
         }
 
@@ -218,7 +220,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
     /**
      * Sanitizes details object to prevent circular references and ensure serializability
      */
-    private sanitizeDetails(details: any): any {
+    private sanitizeDetails(details: any): GrpcErrorDetails | null {
         if (details === null || details === undefined) {
             return null;
         }
@@ -231,7 +233,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
             // If serialization fails, create a safe representation
             if (typeof details === 'object') {
                 try {
-                    const safeDetails: any = {};
+                    const safeDetails: GrpcErrorDetails = {};
 
                     for (const [key, value] of Object.entries(details)) {
                         if (
@@ -260,7 +262,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
     /**
      * Creates a fallback error when all else fails
      */
-    private createFallbackError(_exception: RpcException): any {
+    private createFallbackError(_exception: RpcException): GrpcErrorResponse {
         return {
             code: GrpcErrorCode.INTERNAL,
             message: 'Internal server error occurred',

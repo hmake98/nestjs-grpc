@@ -437,5 +437,281 @@ describe('GrpcExceptionFilter', () => {
                 },
             });
         });
+
+        it('should handle completely invalid details object', done => {
+            const objWithInvalidProps = {
+                name: 'test',
+                invalidProp: {
+                    toString: () => { throw new Error('toString failed'); }
+                }
+            };
+            const rpcException = new RpcException(objWithInvalidProps);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.details).toEqual({ error: 'Details could not be serialized' });
+                    done();
+                },
+            });
+        });
+
+        it('should handle primitive error values that are not objects', done => {
+            const rpcException = new RpcException(null);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.code).toBe(2); // UNKNOWN
+                    expect(error.message).toBe('null');
+                    done();
+                },
+            });
+        });
+
+        it('should handle metadata add errors gracefully', done => {
+            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            
+            const mockMetadata = {
+                add: jest.fn().mockImplementation(() => {
+                    throw new Error('metadata add failed');
+                })
+            };
+
+            // Mock the Metadata constructor to return our mock
+            const originalMetadata = require('@grpc/grpc-js').Metadata;
+            require('@grpc/grpc-js').Metadata = jest.fn().mockImplementation(() => mockMetadata);
+
+            const httpException = new HttpException('Test error', HttpStatus.BAD_REQUEST);
+            const rpcException = new RpcException(httpException);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Error adding metadata'));
+                    expect(error.code).toBe(3); // INVALID_ARGUMENT
+                    
+                    // Restore original
+                    require('@grpc/grpc-js').Metadata = originalMetadata;
+                    consoleSpy.mockRestore();
+                    done();
+                },
+            });
+        });
+
+        it('should handle HTTP status code edge cases', done => {
+            const testCases = [
+                { status: HttpStatus.GONE, expectedCode: 5 }, // NOT_FOUND (410)
+                { status: HttpStatus.BAD_GATEWAY, expectedCode: 14 }, // UNAVAILABLE (502)
+                { status: HttpStatus.GATEWAY_TIMEOUT, expectedCode: 14 }, // UNAVAILABLE (504)
+                { status: 450, expectedCode: 3 }, // 4xx range -> INVALID_ARGUMENT
+                { status: 550, expectedCode: 13 }, // 5xx range -> INTERNAL
+                { status: 200, expectedCode: 2 }, // Default case -> UNKNOWN
+            ];
+
+            let completed = 0;
+            const total = testCases.length;
+
+            testCases.forEach(({ status, expectedCode }) => {
+                const httpException = new HttpException('Test error', status);
+                const rpcException = new RpcException(httpException);
+                const result = filter.catch(rpcException, mockHost);
+
+                result.subscribe({
+                    error: error => {
+                        expect(error.code).toBe(expectedCode);
+                        completed++;
+                        if (completed === total) {
+                            done();
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should handle parseHttpStatus with non-positive numbers', done => {
+            const errorWithStatus = { status: -1, message: 'Negative status' };
+            const rpcException = new RpcException(errorWithStatus);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.code).toBe(2); // UNKNOWN (invalid status)
+                    expect(error.message).toBe('Negative status');
+                    done();
+                },
+            });
+        });
+
+        it('should handle parseHttpStatus with invalid string', done => {
+            const errorWithStatus = { status: 'abc', message: 'String status' };
+            const rpcException = new RpcException(errorWithStatus);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.code).toBe(2); // UNKNOWN (invalid status)
+                    expect(error.message).toBe('String status');
+                    done();
+                },
+            });
+        });
+
+        it('should handle details that are primitive values', done => {
+            const rpcException = new RpcException(42);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.details).toEqual({ value: '42' });
+                    done();
+                },
+            });
+        });
+
+        it('should handle null and undefined details', done => {
+            const testCases = [null, undefined];
+            let completed = 0;
+            const total = testCases.length;
+
+            testCases.forEach(detailsValue => {
+                const rpcException = new RpcException(detailsValue);
+                const result = filter.catch(rpcException, mockHost);
+
+                result.subscribe({
+                    error: error => {
+                        expect(error.details).toBeNull();
+                        completed++;
+                        if (completed === total) {
+                            done();
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should handle objects with mixed property types in details', done => {
+            const complexObj = {
+                stringProp: 'test',
+                numberProp: 123,
+                booleanProp: true,
+                nullProp: null,
+                undefinedProp: undefined,
+                objectProp: { nested: 'value' }
+            };
+            const rpcException = new RpcException(complexObj);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.details).toBeDefined();
+                    expect(error.details.stringProp).toBe('test');
+                    expect(error.details.numberProp).toBe(123);
+                    expect(error.details.booleanProp).toBe(true);
+                    expect(error.details.nullProp).toBeNull();
+                    expect(error.details.undefinedProp).toBeUndefined();
+                    expect(error.details.objectProp).toBe('[object Object]');
+                    done();
+                },
+            });
+        });
+
+        it('should log warning for invalid gRPC status codes', done => {
+            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            
+            const grpcException = new GrpcException({
+                code: -5 as any, // Invalid negative code
+                message: 'Test error',
+            });
+
+            const result = filter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid gRPC status code'));
+                    expect(error.code).toBe(2); // Should fallback to UNKNOWN
+                    consoleSpy.mockRestore();
+                    done();
+                },
+            });
+        });
+
+        it('should log warning for invalid HTTP status codes in mapping', done => {
+            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            
+            const httpException = new HttpException('Test error', 99); // Invalid HTTP status
+            const rpcException = new RpcException(httpException);
+
+            const result = filter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid HTTP status code'));
+                    expect(error.code).toBe(2); // Should fallback to UNKNOWN
+                    consoleSpy.mockRestore();
+                    done();
+                },
+            });
+        });
+
+        it('should handle integer vs non-integer status codes', done => {
+            const testCases = [
+                { status: 0.5, shouldLog: true }, // Non-integer
+                { status: 400, shouldLog: false }, // Valid integer
+                { status: '400.5', shouldLog: true }, // Non-integer string
+            ];
+
+            let completed = 0;
+            const total = testCases.length;
+
+            testCases.forEach(({ status, shouldLog }) => {
+                const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+                
+                const httpException = new HttpException('Test error', status as any);
+                const rpcException = new RpcException(httpException);
+                const result = filter.catch(rpcException, mockHost);
+
+                result.subscribe({
+                    error: error => {
+                        if (shouldLog) {
+                            expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid HTTP status code'));
+                        }
+                        consoleSpy.mockRestore();
+                        completed++;
+                        if (completed === total) {
+                            done();
+                        }
+                    },
+                });
+            });
+        });
+
+        it('should log warning for invalid metadata', done => {
+            const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+            
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.INTERNAL,
+                message: 'Test error',
+                metadata: { invalid: 'object' } as any,
+            });
+
+            const result = filter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid metadata provided'));
+                    expect(error.metadata).toBeDefined();
+                    consoleSpy.mockRestore();
+                    done();
+                },
+            });
+        });
     });
 });
