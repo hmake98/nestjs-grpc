@@ -6,7 +6,7 @@ import { GrpcErrorCode } from '../constants';
 import type { GrpcExceptionOptions } from '../interfaces';
 
 /**
- * gRPC-specific RPC exception with enhanced metadata support and validation
+ * gRPC-specific RPC exception
  */
 export class GrpcException extends RpcException {
     private readonly code: GrpcErrorCode;
@@ -14,7 +14,7 @@ export class GrpcException extends RpcException {
     private readonly metadata: Record<string, string | Buffer | string[] | Buffer[]>;
 
     /**
-     * Creates a new GrpcException with validation
+     * Creates a new GrpcException
      * @param options The exception options or error message
      */
     constructor(options: GrpcExceptionOptions | string) {
@@ -26,12 +26,11 @@ export class GrpcException extends RpcException {
         this.details = opts.details ?? null;
         this.metadata = GrpcException.validateMetadata(opts.metadata ?? {});
 
-        // Override name to match the class name
         Object.defineProperty(this, 'name', { value: 'GrpcException' });
     }
 
     /**
-     * Normalizes constructor options with validation
+     * Normalizes constructor options
      */
     private static normalizeOptions(options: GrpcExceptionOptions | string): GrpcExceptionOptions {
         if (typeof options === 'string') {
@@ -90,14 +89,12 @@ export class GrpcException extends RpcException {
             }
 
             if (value === null || value === undefined) {
-                continue; // Skip null/undefined values
+                continue;
             }
 
-            // Validate value types
             if (typeof value === 'string' || Buffer.isBuffer(value)) {
                 validatedMetadata[key] = value;
             } else if (Array.isArray(value)) {
-                // Validate array elements and separate strings from Buffers
                 const stringArray = value.filter(
                     (item): item is string => typeof item === 'string',
                 );
@@ -108,10 +105,6 @@ export class GrpcException extends RpcException {
                 } else if (bufferArray.length > 0) {
                     validatedMetadata[key] = bufferArray;
                 }
-            } else {
-                console.warn(
-                    `Skipping invalid metadata value for key '${key}': must be string, Buffer, or array of strings/Buffers`,
-                );
             }
         }
 
@@ -136,11 +129,11 @@ export class GrpcException extends RpcException {
      * Gets the error metadata
      */
     public getMetadata(): Record<string, string | Buffer | string[] | Buffer[]> {
-        return { ...this.metadata }; // Return copy to prevent mutation
+        return { ...this.metadata };
     }
 
     /**
-     * Converts the metadata to a gRPC Metadata object with validation
+     * Converts the metadata to a gRPC Metadata object
      */
     public toMetadata(): Metadata {
         const metadata = new Metadata();
@@ -148,7 +141,7 @@ export class GrpcException extends RpcException {
         try {
             Object.entries(this.metadata).forEach(([key, value]) => {
                 if (value === null || value === undefined) {
-                    return; // Skip null/undefined values
+                    return;
                 }
 
                 if (Array.isArray(value)) {
@@ -161,9 +154,7 @@ export class GrpcException extends RpcException {
                     metadata.add(key, value);
                 }
             });
-        } catch (error) {
-            console.warn('Error converting metadata:', error.message);
-            // Return empty metadata on error
+        } catch (_error) {
             return new Metadata();
         }
 
@@ -171,7 +162,7 @@ export class GrpcException extends RpcException {
     }
 
     /**
-     * Gets the error as a plain object suitable for serialization
+     * Gets the error as a plain object
      */
     public getError(): any {
         return {
@@ -182,48 +173,31 @@ export class GrpcException extends RpcException {
         };
     }
 
-    /**
-     * Converts error to JSON with validation
-     */
-    public toJSON(): any {
-        try {
-            return {
-                name: this.name,
-                code: this.code,
-                message: this.message,
-                details: this.details,
-                metadata: this.metadata,
-            };
-        } catch {
-            return {
-                name: this.name,
-                code: this.code,
-                message: this.message,
-                details: null,
-                metadata: {},
-            };
-        }
-    }
-
-    /**
-     * Creates a NOT_FOUND exception with validation
-     */
-    static notFound(
+    // Static factory methods for common gRPC errors
+    static ok(
         message: string,
         details?: any,
         metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
     ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.NOT_FOUND,
-            message,
-            details,
-            metadata,
-        });
+        return new GrpcException({ code: GrpcErrorCode.OK, message, details, metadata });
     }
 
-    /**
-     * Creates an INVALID_ARGUMENT exception with validation
-     */
+    static cancelled(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.CANCELLED, message, details, metadata });
+    }
+
+    static unknown(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.UNKNOWN, message, details, metadata });
+    }
+
     static invalidArgument(
         message: string,
         details?: any,
@@ -237,9 +211,27 @@ export class GrpcException extends RpcException {
         });
     }
 
-    /**
-     * Creates an ALREADY_EXISTS exception with validation
-     */
+    static deadlineExceeded(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({
+            code: GrpcErrorCode.DEADLINE_EXCEEDED,
+            message,
+            details,
+            metadata,
+        });
+    }
+
+    static notFound(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.NOT_FOUND, message, details, metadata });
+    }
+
     static alreadyExists(
         message: string,
         details?: any,
@@ -253,9 +245,6 @@ export class GrpcException extends RpcException {
         });
     }
 
-    /**
-     * Creates a PERMISSION_DENIED exception with validation
-     */
     static permissionDenied(
         message: string,
         details?: any,
@@ -269,41 +258,6 @@ export class GrpcException extends RpcException {
         });
     }
 
-    /**
-     * Creates an INTERNAL exception with validation
-     */
-    static internal(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.INTERNAL,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a UNAUTHENTICATED exception with validation
-     */
-    static unauthenticated(
-        message: string,
-        details?: any,
-        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
-    ): GrpcException {
-        return new GrpcException({
-            code: GrpcErrorCode.UNAUTHENTICATED,
-            message,
-            details,
-            metadata,
-        });
-    }
-
-    /**
-     * Creates a RESOURCE_EXHAUSTED exception with validation
-     */
     static resourceExhausted(
         message: string,
         details?: any,
@@ -317,16 +271,74 @@ export class GrpcException extends RpcException {
         });
     }
 
-    /**
-     * Creates an UNAVAILABLE exception with validation
-     */
-    static unavailable(
+    static failedPrecondition(
         message: string,
         details?: any,
         metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
     ): GrpcException {
         return new GrpcException({
-            code: GrpcErrorCode.UNAVAILABLE,
+            code: GrpcErrorCode.FAILED_PRECONDITION,
+            message,
+            details,
+            metadata,
+        });
+    }
+
+    static aborted(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.ABORTED, message, details, metadata });
+    }
+
+    static outOfRange(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.OUT_OF_RANGE, message, details, metadata });
+    }
+
+    static unimplemented(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.UNIMPLEMENTED, message, details, metadata });
+    }
+
+    static internal(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.INTERNAL, message, details, metadata });
+    }
+
+    static unavailable(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.UNAVAILABLE, message, details, metadata });
+    }
+
+    static dataLoss(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({ code: GrpcErrorCode.DATA_LOSS, message, details, metadata });
+    }
+
+    static unauthenticated(
+        message: string,
+        details?: any,
+        metadata?: Record<string, string | Buffer | string[] | Buffer[]>,
+    ): GrpcException {
+        return new GrpcException({
+            code: GrpcErrorCode.UNAUTHENTICATED,
             message,
             details,
             metadata,

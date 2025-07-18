@@ -8,21 +8,41 @@ import * as protobuf from 'protobufjs';
 import type { Options } from '@grpc/proto-loader';
 
 /**
- * Default options for proto loading with enhanced stability
+ * Default options for proto loading with enhanced stability and compatibility.
+ * These settings ensure consistent behavior across different protobuf versions.
  */
 const defaultOptions: Options = {
+    /** Preserve original field names (don't convert to camelCase) */
     keepCase: true,
+    /** Convert long values to strings for JavaScript compatibility */
     longs: String,
+    /** Convert enum values to strings */
     enums: String,
+    /** Include default values for optional fields */
     defaults: true,
+    /** Handle oneof fields properly */
     oneofs: true,
+    /** Ensure arrays are handled correctly */
     arrays: true,
+    /** Ensure objects are handled correctly */
     objects: true,
+    /** Directories to search for imported proto files */
     includeDirs: [],
 };
 
 /**
- * Validates proto file path
+ * Validates and normalizes a proto file path.
+ * Ensures the path is valid and accessible.
+ *
+ * @param protoPath - Path to the proto file or directory
+ * @returns Normalized absolute path
+ * @throws Error if path is invalid or inaccessible
+ *
+ * @example
+ * ```typescript
+ * const validPath = validateProtoPath('./protos/service.proto');
+ * console.log('Using proto file:', validPath);
+ * ```
  */
 function validateProtoPath(protoPath: string): string {
     if (!protoPath || typeof protoPath !== 'string') {
@@ -46,7 +66,20 @@ function validateProtoPath(protoPath: string): string {
 }
 
 /**
- * Validates and normalizes proto loader options
+ * Validates and normalizes proto loader options.
+ * Merges user options with sensible defaults and validates critical settings.
+ *
+ * @param options - Proto loader options to validate and merge
+ * @returns Validated and normalized options object
+ * @throws Error if options are invalid
+ *
+ * @example
+ * ```typescript
+ * const options = validateOptions({
+ *   keepCase: false,
+ *   includeDirs: ['./protos', './shared']
+ * });
+ * ```
  */
 function validateOptions(options: Options = {}): Options {
     if (typeof options !== 'object' || options === null) {
@@ -68,7 +101,28 @@ function validateOptions(options: Options = {}): Options {
 }
 
 /**
- * Loads a proto file and returns the package definition with enhanced error handling
+ * Loads a protobuf file and returns the parsed gRPC package definition.
+ * Handles validation, error recovery, and provides detailed error messages.
+ *
+ * @param protoPath - Path to the .proto file or directory
+ * @param options - Proto loader options for customizing parsing behavior
+ * @returns Promise that resolves to the loaded gRPC package definition
+ * @throws Error if the proto file cannot be loaded or parsed
+ *
+ * @example
+ * ```typescript
+ * // Load a single proto file
+ * const packageDef = await loadProto('./protos/auth.proto');
+ *
+ * // Load with custom options
+ * const packageDef = await loadProto('./protos/auth.proto', {
+ *   keepCase: false,
+ *   includeDirs: ['./shared-protos']
+ * });
+ *
+ * // Use the loaded definition
+ * const grpcServices = grpc.loadPackageDefinition(packageDef);
+ * ```
  */
 export async function loadProto(
     protoPath: string,
@@ -130,7 +184,26 @@ export async function loadProtoWithProtobuf(protoPath: string): Promise<protobuf
 }
 
 /**
- * Gets a service from a package definition by package name and service name with validation
+ * Retrieves a specific gRPC service constructor from a loaded package definition.
+ * Navigates through the package hierarchy to find the requested service.
+ *
+ * @param packageDefinition - Loaded gRPC package definition
+ * @param packageName - Dot-separated package name (e.g., 'com.example.auth')
+ * @param serviceName - Name of the service to retrieve
+ * @returns Service constructor function for creating client instances
+ * @throws Error if package or service is not found
+ *
+ * @example
+ * ```typescript
+ * const packageDef = await loadProto('./auth.proto');
+ * const services = grpc.loadPackageDefinition(packageDef);
+ *
+ * // Get the AuthService from com.example.auth package
+ * const AuthService = getServiceByName(services, 'com.example.auth', 'AuthService');
+ *
+ * // Create a client instance
+ * const client = new AuthService('localhost:50051', grpc.credentials.createInsecure());
+ * ```
  */
 export function getServiceByName(
     packageDefinition: grpc.GrpcObject,
@@ -275,7 +348,7 @@ export function getServiceMethods(serviceConstructor: any): string[] {
         }
 
         if (!serviceConstructor.service) {
-            console.warn('Service constructor has no service property');
+            // Note: This is a warning that should be logged by the calling service
             return [];
         }
 
@@ -297,8 +370,8 @@ export function getServiceMethods(serviceConstructor: any): string[] {
         );
 
         return validMethods;
-    } catch (error) {
-        console.warn('Error getting service methods:', error.message);
+    } catch (_error) {
+        // Note: This error should be logged by the calling service
         return [];
     }
 }

@@ -3,9 +3,9 @@ import type { Options } from '@grpc/proto-loader';
 import type { DynamicModule, ModuleMetadata, Provider, Type, LogLevel } from '@nestjs/common';
 
 /**
- * Enhanced logging options for gRPC module
+ * Logger configuration options
  */
-export interface GrpcLoggingOptions {
+export interface GrpcLoggerOptions {
     /**
      * Enable/disable logging
      * @default true
@@ -23,13 +23,6 @@ export interface GrpcLoggingOptions {
      * @default 'GrpcModule'
      */
     context?: string;
-
-    /**
-     * Enable debug logging (legacy compatibility)
-     * @default false
-     * @deprecated Use level: 'debug' instead
-     */
-    debug?: boolean;
 
     /**
      * Enable error logging
@@ -51,7 +44,50 @@ export interface GrpcLoggingOptions {
 }
 
 /**
- * Options for the gRPC module
+ * Logging options for gRPC module
+ */
+export interface GrpcLoggingOptions {
+    /**
+     * Enable/disable logging
+     * @default true
+     */
+    enabled?: boolean;
+
+    /**
+     * Log level (debug, verbose, log, warn, error)
+     * @default 'log'
+     */
+    level?: LogLevel;
+
+    /**
+     * Custom context for logger
+     * @default 'GrpcModule'
+     */
+    context?: string;
+
+    /**
+     * Enable error logging
+     * @default true
+     */
+    logErrors?: boolean;
+
+    /**
+     * Enable performance logging
+     * @default false
+     */
+    logPerformance?: boolean;
+
+    /**
+     * Enable detailed request/response logging
+     * @default false
+     */
+    logDetails?: boolean;
+}
+
+/**
+ * Configuration options for the gRPC module.
+ * These options control how proto files are loaded, connections are established,
+ * and how the gRPC services behave.
  */
 export interface GrpcOptions {
     /**
@@ -112,13 +148,14 @@ export interface GrpcOptions {
     loaderOptions?: Options;
 
     /**
-     * Simple logging configuration
+     * Logging configuration
      */
     logging?: GrpcLoggingOptions;
 }
 
 /**
- * Options for creating a gRPC client
+ * Configuration options for creating individual gRPC clients.
+ * These options allow fine-tuning of client behavior per service.
  */
 export interface GrpcClientOptions {
     /**
@@ -190,7 +227,6 @@ export interface GrpcClientOptions {
 
     /**
      * Custom gRPC channel options
-     * @see https://grpc.github.io/grpc/core/group__grpc__arg__keys.html
      */
     channelOptions?: Record<string, any>;
 }
@@ -206,7 +242,7 @@ export interface GrpcOptionsFactory {
 }
 
 /**
- * Async configuration options for the gRPC module
+ * Async options for the gRPC module
  */
 export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
     /**
@@ -231,49 +267,37 @@ export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> 
 }
 
 /**
- * ✅ Simplified options for the GrpcModule.forFeature() method
- * Dependencies are automatically resolved from the parent module
+ * Options for gRPC feature modules
  */
 export interface GrpcFeatureOptions {
     /**
      * gRPC controllers to register (classes decorated with @GrpcController)
-     * Dependencies will be automatically injected from the parent module
      */
     controllers?: Type<any>[];
 
     /**
      * gRPC service clients to register (classes decorated with @GrpcService)
-     * These will be auto-configured and made available for injection
      */
     services?: Type<any>[];
-}
 
-/**
- * Extended options for advanced use cases (backward compatibility)
- * Most users should use the simplified GrpcFeatureOptions instead
- */
-export interface GrpcFeatureOptionsExtended extends GrpcFeatureOptions {
     /**
      * Additional providers that the controllers/services depend on
-     * ⚠️ Usually not needed - dependencies are auto-resolved from parent module
      */
     providers?: Provider[];
 
     /**
      * Modules to import that provide dependencies for controllers/services
-     * ⚠️ Usually not needed - dependencies are auto-resolved from parent module
      */
     imports?: Array<Type<any> | DynamicModule>;
 
     /**
      * Additional exports from this feature module
-     * ⚠️ Usually not needed - controllers and services are auto-exported
      */
     exports?: Array<Type<any> | string | symbol>;
 }
 
 /**
- * Interface for gRPC method options
+ * Options for gRPC method decorator
  */
 export interface GrpcMethodOptions {
     /**
@@ -283,7 +307,7 @@ export interface GrpcMethodOptions {
     methodName?: string;
 
     /**
-     * Whether the method is a server streaming method
+     * Whether the method is a streaming method
      * @default false
      */
     streaming?: boolean;
@@ -296,7 +320,7 @@ export interface GrpcMethodOptions {
 }
 
 /**
- * Interface for gRPC controller options
+ * Options for gRPC controller decorator
  */
 export interface GrpcControllerOptions {
     /**
@@ -318,7 +342,7 @@ export interface GrpcControllerOptions {
 }
 
 /**
- * Interface for gRPC service client options
+ * Options for gRPC service decorator
  */
 export interface GrpcServiceOptions {
     /**
@@ -345,7 +369,7 @@ export interface GrpcServiceOptions {
 }
 
 /**
- * Options for the GrpcException constructor
+ * Options for gRPC exception
  */
 export interface GrpcExceptionOptions {
     /**
@@ -354,7 +378,7 @@ export interface GrpcExceptionOptions {
     code: GrpcErrorCode;
 
     /**
-     * Error message (will be trimmed)
+     * Error message
      */
     message: string;
 
@@ -370,7 +394,7 @@ export interface GrpcExceptionOptions {
 }
 
 /**
- * Options for the generate command
+ * Options for CLI generate command
  */
 export interface GenerateCommandOptions {
     /**
@@ -432,7 +456,7 @@ export interface GenerateCommandOptions {
 }
 
 /**
- * Controller metadata interface
+ * Metadata for gRPC controller
  */
 export interface ControllerMetadata {
     serviceName: string;
@@ -442,7 +466,7 @@ export interface ControllerMetadata {
 }
 
 /**
- * Service client metadata interface
+ * Metadata for gRPC service client
  */
 export interface ServiceClientMetadata {
     serviceName: string;
@@ -452,7 +476,7 @@ export interface ServiceClientMetadata {
 }
 
 /**
- * Configuration options for the GrpcExceptionFilter
+ * Options for gRPC exception filter
  */
 export interface GrpcExceptionFilterOptions {
     /**
@@ -481,7 +505,7 @@ export interface GrpcExceptionFilterOptions {
 }
 
 /**
- * Standard gRPC error response structure
+ * gRPC error response
  */
 export interface GrpcErrorResponse {
     /**
@@ -506,7 +530,7 @@ export interface GrpcErrorResponse {
 }
 
 /**
- * Sanitized error details interface
+ * gRPC error details
  */
 export interface GrpcErrorDetails {
     /**
@@ -531,7 +555,7 @@ export interface GrpcErrorDetails {
 }
 
 /**
- * HTTP to gRPC status mapping interface
+ * HTTP to gRPC status mapping
  */
 export interface HttpToGrpcStatusMapping {
     /**

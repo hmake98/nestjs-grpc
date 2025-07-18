@@ -1,2 +1,2 @@
-export * from './grpc-client.service';
-export * from './proto-loader.service';
+export { GrpcClientService } from './grpc-client.service';
+export { ProtoLoaderService } from './proto-loader.service';

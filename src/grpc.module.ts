@@ -32,7 +32,7 @@ import { GrpcLogger } from './utils/logger';
 /**
  * Validates gRPC configuration options
  */
-function validateGrpcOptions(options: any): void {
+function validateGrpcOptions(options: any): asserts options is GrpcOptions {
     if (!options || typeof options !== 'object') {
         throw new Error('gRPC options must be a valid object');
     }
@@ -48,10 +48,28 @@ function validateGrpcOptions(options: any): void {
     if (options.url && typeof options.url !== 'string') {
         throw new Error('url must be a string');
     }
+
+    if (
+        options.maxSendMessageSize &&
+        (typeof options.maxSendMessageSize !== 'number' || options.maxSendMessageSize <= 0)
+    ) {
+        throw new Error('maxSendMessageSize must be a positive number');
+    }
+
+    if (
+        options.maxReceiveMessageSize &&
+        (typeof options.maxReceiveMessageSize !== 'number' || options.maxReceiveMessageSize <= 0)
+    ) {
+        throw new Error('maxReceiveMessageSize must be a positive number');
+    }
 }
 
 /**
- * Global gRPC module for NestJS applications with simple logging
+ * Global gRPC module for NestJS applications that provides comprehensive
+ * gRPC client and server functionality with automatic service discovery.
+ *
+ * Use forRoot() for basic configuration, forRootAsync() for dynamic configuration,
+ * and forFeature() for feature modules with specific controllers and services.
  */
 @Global()
 @Module({
@@ -74,7 +92,7 @@ export class GrpcModule {
             GrpcRegistryService,
             {
                 provide: APP_FILTER,
-                useClass: GrpcExceptionFilter,
+                useFactory: () => new GrpcExceptionFilter(),
             },
         ];
 
@@ -102,7 +120,7 @@ export class GrpcModule {
             GrpcRegistryService,
             {
                 provide: APP_FILTER,
-                useClass: GrpcExceptionFilter,
+                useFactory: () => new GrpcExceptionFilter(),
             },
         ];
 
@@ -188,7 +206,6 @@ export class GrpcModule {
 
 /**
  * Service responsible for discovering and registering gRPC controllers and services
- * with enhanced logging capabilities
  */
 @Injectable()
 export class GrpcRegistryService implements OnModuleInit {
@@ -211,24 +228,26 @@ export class GrpcRegistryService implements OnModuleInit {
      * Lifecycle hook - discovers and registers gRPC components on module initialization
      */
     onModuleInit(): void {
-        try {
-            this.logger.log('Starting gRPC service discovery...');
+        this.logger.lifecycle('Starting gRPC service discovery');
 
-            this.discoverControllers();
-            this.discoverServiceClients();
+        this.discoverControllers();
+        this.discoverServiceClients();
 
-            this.logger.log(
-                `Discovered ${this.controllers.size} controllers, ${this.serviceClients.size} service clients`,
-            );
+        this.logger.lifecycle('gRPC service discovery completed', {
+            controllers: this.controllers.size,
+            serviceClients: this.serviceClients.size,
+        });
 
-            this.logger.debug('Controllers:', Array.from(this.controllers.keys()).join(', '));
-            this.logger.debug(
-                'Service clients:',
-                Array.from(this.serviceClients.keys()).join(', '),
-            );
-        } catch (error) {
-            this.logger.error('Failed to initialize GrpcRegistryService', error);
-            throw error;
+        if (this.options.logging?.level === 'debug') {
+            const controllerNames = Array.from(this.controllers.keys());
+            const serviceClientNames = Array.from(this.serviceClients.keys());
+
+            if (controllerNames.length > 0) {
+                this.logger.debug(`Controllers: ${controllerNames.join(', ')}`);
+            }
+            if (serviceClientNames.length > 0) {
+                this.logger.debug(`Service clients: ${serviceClientNames.join(', ')}`);
+            }
         }
     }
 
@@ -273,14 +292,26 @@ export class GrpcRegistryService implements OnModuleInit {
             );
 
         for (const wrapper of controllerWrappers) {
+            const className = wrapper.metatype?.name ?? 'Unknown';
+
             try {
                 const controllerClass = wrapper.metatype as Type<any>;
                 const metadata = this.extractControllerMetadata(controllerClass);
+
+                if (this.controllers.has(metadata.serviceName)) {
+                    this.logger.warn(
+                        `Controller ${metadata.serviceName} already registered, skipping duplicate`,
+                    );
+                    continue;
+                }
+
                 this.controllers.set(metadata.serviceName, metadata);
 
-                this.logger.log(`Registered controller: ${metadata.serviceName}`);
+                this.logger.lifecycle(`Registered controller: ${metadata.serviceName}`, {
+                    methods: metadata.methods.size,
+                    className,
+                });
             } catch (error) {
-                const className = wrapper.metatype?.name ?? 'Unknown';
                 this.logger.error(`Failed to register controller ${className}`, error);
             }
         }
@@ -299,6 +330,8 @@ export class GrpcRegistryService implements OnModuleInit {
             );
 
         for (const wrapper of serviceWrappers) {
+            const className = wrapper.metatype?.name ?? 'Unknown';
+
             try {
                 const serviceClass = wrapper.metatype as Type<any>;
                 const metadata: ServiceClientMetadata = Reflect.getMetadata(
@@ -306,12 +339,23 @@ export class GrpcRegistryService implements OnModuleInit {
                     serviceClass,
                 );
 
-                if (metadata) {
-                    this.serviceClients.set(metadata.serviceName, metadata);
-                    this.logger.log(`Registered service client: ${metadata.serviceName}`);
+                if (!metadata) {
+                    this.logger.warn(`Service class ${className} has no valid metadata`);
+                    continue;
                 }
+
+                if (this.serviceClients.has(metadata.serviceName)) {
+                    this.logger.warn(
+                        `Service client ${metadata.serviceName} already registered, skipping duplicate`,
+                    );
+                    continue;
+                }
+
+                this.serviceClients.set(metadata.serviceName, metadata);
+                this.logger.lifecycle(`Registered service client: ${metadata.serviceName}`, {
+                    className,
+                });
             } catch (error) {
-                const className = wrapper.metatype?.name ?? 'Unknown';
                 this.logger.error(`Failed to register service client ${className}`, error);
             }
         }
@@ -329,26 +373,21 @@ export class GrpcRegistryService implements OnModuleInit {
 
         const methods = new Map<string, any>();
 
-        // Scan for methods decorated with @GrpcMethod
-        this.metadataScanner.scanFromPrototype(
-            controllerClass,
-            controllerClass.prototype,
-            (methodName: string) => {
-                const methodMetadata = Reflect.getMetadata(
-                    GRPC_METHOD_METADATA,
-                    controllerClass.prototype,
-                    methodName,
-                );
-
-                if (methodMetadata) {
-                    methods.set(methodName, methodMetadata);
-                    this.logger.debug(`Found gRPC method: ${controllerClass.name}.${methodName}`);
-                    return true;
-                }
-
-                return false;
-            },
+        // Get all property names from the prototype
+        const prototype = controllerClass.prototype;
+        const methodNames = Object.getOwnPropertyNames(prototype).filter(
+            name => name !== 'constructor' && typeof prototype[name] === 'function',
         );
+
+        // Check each method for gRPC metadata
+        for (const methodName of methodNames) {
+            const methodMetadata = Reflect.getMetadata(GRPC_METHOD_METADATA, prototype, methodName);
+
+            if (methodMetadata) {
+                methods.set(methodName, methodMetadata);
+                this.logger.debug(`Found gRPC method: ${controllerClass.name}.${methodName}`);
+            }
+        }
 
         return {
             serviceName: controllerMetadata.serviceName,

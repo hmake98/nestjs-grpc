@@ -1,66 +1,71 @@
 import { Logger, LogLevel } from '@nestjs/common';
 
-/**
- * Logger configuration options
- */
-export interface GrpcLoggerOptions {
-    /**
-     * Enable/disable logging
-     * @default true
-     */
-    enabled?: boolean;
-
-    /**
-     * Log level (debug, verbose, log, warn, error)
-     * @default 'log'
-     */
-    level?: LogLevel;
-
-    /**
-     * Custom context for logger
-     * @default 'GrpcModule'
-     */
-    context?: string;
-
-    /**
-     * Enable debug logging (legacy compatibility)
-     * @default false
-     * @deprecated Use level: 'debug' instead
-     */
-    debug?: boolean;
-
-    /**
-     * Enable error logging
-     * @default true
-     */
-    logErrors?: boolean;
-
-    /**
-     * Enable performance logging
-     * @default false
-     */
-    logPerformance?: boolean;
-
-    /**
-     * Enable detailed request/response logging
-     * @default false
-     */
-    logDetails?: boolean;
-}
+import { GrpcLoggerOptions } from '../interfaces';
 
 /**
- * Central logger for the gRPC module with configurable levels
+ * Centralized logging utility for the gRPC module with level-based filtering,
+ * performance tracking, and detailed request/response logging capabilities.
+ *
+ * Features:
+ * - Level-based log filtering (debug, verbose, log, warn, error)
+ * - Performance metrics logging with timing information
+ * - Detailed request/response logging for debugging
+ * - Service lifecycle event tracking
+ * - Method call timing and statistics
+ * - Connection event monitoring
+ *
+ * @example
+ * ```typescript
+ * // Basic usage
+ * const logger = new GrpcLogger({ context: 'AuthService' });
+ * logger.log('User authenticated successfully');
+ *
+ * // Performance logging
+ * const logger = new GrpcLogger({ logPerformance: true });
+ * logger.performance('Database query', 150);
+ *
+ * // Method call tracking
+ * logger.methodCall('login', 'AuthService', 245);
+ *
+ * // Child logger for specific operations
+ * const childLogger = logger.child('UserManagement');
+ * childLogger.log('Processing user request');
+ * ```
  */
 export class GrpcLogger {
     private readonly logger: Logger;
     private readonly options: Required<GrpcLoggerOptions>;
 
+    /**
+     * Creates a new GrpcLogger instance with the specified configuration.
+     *
+     * @param options - Logger configuration options
+     *
+     * @example
+     * ```typescript
+     * // Basic logger with default settings
+     * const logger = new GrpcLogger();
+     *
+     * // Logger with custom context and performance tracking
+     * const logger = new GrpcLogger({
+     *   context: 'AuthService',
+     *   logPerformance: true,
+     *   level: 'debug'
+     * });
+     *
+     * // Logger for production with error-only logging
+     * const logger = new GrpcLogger({
+     *   level: 'error',
+     *   logDetails: false,
+     *   logPerformance: false
+     * });
+     * ```
+     */
     constructor(options: GrpcLoggerOptions = {}) {
         this.options = {
             enabled: options.enabled ?? true,
-            level: options.level ?? (options.debug ? 'debug' : 'log'),
+            level: options.level ?? 'log',
             context: options.context ?? 'GrpcModule',
-            debug: options.debug ?? false,
             logErrors: options.logErrors ?? true,
             logPerformance: options.logPerformance ?? false,
             logDetails: options.logDetails ?? false,
@@ -70,11 +75,21 @@ export class GrpcLogger {
     }
 
     /**
-     * Log a debug message
+     * Logs a debug message for development and troubleshooting.
+     * Only displayed when log level is set to 'debug'.
+     *
+     * @param message - The debug message to log
+     * @param context - Optional context override for this log entry
+     *
+     * @example
+     * ```typescript
+     * logger.debug('Client connection established');
+     * logger.debug('Processing request payload', 'RequestHandler');
+     * ```
      */
     debug(message: string, context?: string): void {
         if (this.shouldLog('debug')) {
-            this.logger.debug(message, context);
+            this.logger.debug(message, context ?? this.options.context);
         }
     }
 
@@ -83,7 +98,7 @@ export class GrpcLogger {
      */
     verbose(message: string, context?: string): void {
         if (this.shouldLog('verbose')) {
-            this.logger.verbose(message, context);
+            this.logger.verbose(message, context ?? this.options.context);
         }
     }
 
@@ -92,7 +107,7 @@ export class GrpcLogger {
      */
     log(message: string, context?: string): void {
         if (this.shouldLog('log')) {
-            this.logger.log(message, context);
+            this.logger.log(message, context ?? this.options.context);
         }
     }
 
@@ -101,7 +116,7 @@ export class GrpcLogger {
      */
     warn(message: string, context?: string): void {
         if (this.shouldLog('warn')) {
-            this.logger.warn(message, context);
+            this.logger.warn(message, context ?? this.options.context);
         }
     }
 
@@ -111,33 +126,121 @@ export class GrpcLogger {
     error(message: string, error?: Error | string, context?: string): void {
         if (this.shouldLog('error') && this.options.logErrors) {
             if (error instanceof Error) {
-                this.logger.error(message, error.stack, context);
+                this.logger.error(message, error.stack, context ?? this.options.context);
             } else {
-                this.logger.error(message, error, context);
+                this.logger.error(message, error, context ?? this.options.context);
             }
         }
     }
 
     /**
-     * Log performance metrics
+     * Logs performance metrics with execution timing information.
+     * Only displayed when logPerformance is enabled and log level allows verbose output.
+     *
+     * @param message - Description of the operation being measured
+     * @param duration - Execution time in milliseconds
+     * @param context - Optional context override for this log entry
+     *
+     * @example
+     * ```typescript
+     * const start = Date.now();
+     * await someOperation();
+     * const duration = Date.now() - start;
+     * logger.performance('Database query', duration);
+     *
+     * // Output: "Database query (150ms)"
+     * ```
      */
     performance(message: string, duration: number, context?: string): void {
         if (this.options.logPerformance && this.shouldLog('verbose')) {
-            this.logger.verbose(`${message} (${duration}ms)`, context);
+            this.logger.verbose(`${message} (${duration}ms)`, context ?? this.options.context);
         }
     }
 
     /**
-     * Log detailed request/response information
+     * Logs detailed request/response information with optional data serialization.
+     * Only displayed when logDetails is enabled and log level allows debug output.
+     *
+     * @param message - Description of the detailed information being logged
+     * @param data - Optional data object to serialize and include in the log
+     * @param context - Optional context override for this log entry
+     *
+     * @example
+     * ```typescript
+     * // Log with data
+     * logger.detail('Request received', { userId: 123, action: 'login' });
+     *
+     * // Log without data
+     * logger.detail('Processing authentication flow');
+     *
+     * // Output: "Request received: { "userId": 123, "action": "login" }"
+     * ```
      */
     detail(message: string, data?: any, context?: string): void {
         if (this.options.logDetails && this.shouldLog('debug')) {
             if (data) {
-                this.logger.debug(`${message}: ${JSON.stringify(data, null, 2)}`, context);
+                this.logger.debug(
+                    `${message}: ${JSON.stringify(data, null, 2)}`,
+                    context ?? this.options.context,
+                );
             } else {
-                this.logger.debug(message, context);
+                this.logger.debug(message, context ?? this.options.context);
             }
         }
+    }
+
+    /**
+     * Log service lifecycle events
+     */
+    lifecycle(event: string, details?: Record<string, any>, context?: string): void {
+        const message = details ? `${event} ${JSON.stringify(details)}` : event;
+        this.log(message, context ?? this.options.context);
+    }
+
+    /**
+     * Logs gRPC method invocations with optional timing information.
+     * Helps track service usage patterns and performance characteristics.
+     *
+     * @param method - Name of the gRPC method being called
+     * @param service - Name of the gRPC service containing the method
+     * @param duration - Optional execution time in milliseconds
+     * @param context - Optional context override for this log entry
+     *
+     * @example
+     * ```typescript
+     * // Log method call without timing
+     * logger.methodCall('login', 'AuthService');
+     *
+     * // Log method call with performance timing
+     * logger.methodCall('getUserById', 'UserService', 45);
+     *
+     * // Output: "Method call: UserService.getUserById (45ms)"
+     * ```
+     */
+    methodCall(method: string, service: string, duration?: number, context?: string): void {
+        const baseMessage = `Method call: ${service}.${method}`;
+        const message = duration ? `${baseMessage} (${duration}ms)` : baseMessage;
+
+        if (duration && this.options.logPerformance) {
+            this.verbose(message, context ?? this.options.context);
+        } else {
+            this.debug(message, context ?? this.options.context);
+        }
+    }
+
+    /**
+     * Log connection events
+     */
+    connection(
+        event: string,
+        target: string,
+        details?: Record<string, any>,
+        context?: string,
+    ): void {
+        const message = details
+            ? `${event} to ${target} ${JSON.stringify(details)}`
+            : `${event} to ${target}`;
+        this.log(message, context ?? this.options.context);
     }
 
     /**
@@ -156,47 +259,31 @@ export class GrpcLogger {
     }
 
     /**
-     * Create a child logger with a different context
+     * Creates a child logger with a specialized context for specific operations or components.
+     * The child logger inherits all configuration from the parent but uses a nested context.
+     *
+     * @param context - The specific context to append to the parent context
+     * @returns A new GrpcLogger instance with the nested context
+     *
+     * @example
+     * ```typescript
+     * const mainLogger = new GrpcLogger({ context: 'GrpcModule' });
+     *
+     * // Create specialized loggers for different components
+     * const authLogger = mainLogger.child('Auth');
+     * const userLogger = mainLogger.child('UserService');
+     *
+     * authLogger.log('User authenticated');
+     * // Output context: "GrpcModule:Auth"
+     *
+     * userLogger.log('User data retrieved');
+     * // Output context: "GrpcModule:UserService"
+     * ```
      */
     child(context: string): GrpcLogger {
         return new GrpcLogger({
             ...this.options,
             context: `${this.options.context}:${context}`,
         });
-    }
-
-    /**
-     * Get current logger options
-     */
-    getOptions(): Readonly<GrpcLoggerOptions> {
-        return { ...this.options };
-    }
-
-    /**
-     * Check if logging is enabled
-     */
-    isEnabled(): boolean {
-        return this.options.enabled;
-    }
-
-    /**
-     * Check if error logging is enabled
-     */
-    isErrorLoggingEnabled(): boolean {
-        return this.options.logErrors;
-    }
-
-    /**
-     * Check if performance logging is enabled
-     */
-    isPerformanceLoggingEnabled(): boolean {
-        return this.options.logPerformance;
-    }
-
-    /**
-     * Check if detailed logging is enabled
-     */
-    isDetailLoggingEnabled(): boolean {
-        return this.options.logDetails;
     }
 }

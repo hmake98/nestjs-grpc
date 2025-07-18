@@ -1,32 +1,51 @@
 // Main module
-export * from './grpc.module';
+export { GrpcModule } from './grpc.module';
 
 // Constants
 export { GrpcErrorCode } from './constants';
 
 // Decorators
-export * from './decorators/grpc-method.decorator';
-export * from './decorators/grpc-service.decorator';
-export * from './decorators/grpc-controller.decorator';
+export {
+    GrpcController,
+    GrpcMethod,
+    GrpcService,
+    GrpcStream,
+    GrpcPayload,
+    GrpcStreamPayload,
+    InjectGrpcClient,
+} from './decorators';
 
 // Exceptions
-export * from './exceptions/grpc.exception';
-export * from './exceptions/grpc.exception-filter';
+export { GrpcException } from './exceptions/grpc.exception';
+export { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 
 // Interfaces
-export * from './interfaces';
-
-// Export the specific interface for better IDE support
-export type { GrpcFeatureOptions } from './interfaces';
+export type {
+    GrpcOptions,
+    GrpcClientOptions,
+    GrpcModuleAsyncOptions,
+    GrpcOptionsFactory,
+    GrpcFeatureOptions,
+    GrpcMethodOptions,
+    GrpcControllerOptions,
+    GrpcServiceOptions,
+    GrpcExceptionOptions,
+    GrpcExceptionFilterOptions,
+    GrpcLoggingOptions,
+    GenerateCommandOptions,
+    ControllerMetadata,
+    ServiceClientMetadata,
+    GrpcErrorResponse,
+    GrpcErrorDetails,
+    HttpToGrpcStatusMapping,
+} from './interfaces';
 
 // Services
-export * from './services/grpc-client.service';
-export * from './services/proto-loader.service';
+export { GrpcClientService } from './services/grpc-client.service';
+export { ProtoLoaderService } from './services/proto-loader.service';
 
 // Utils
-export * from './utils/proto-utils';
-export * from './utils/type-utils';
-export * from './utils/logger';
+export { GrpcLogger } from './utils/logger';
 
-// CLI commands
-export * from './commands/generate.command';
+// CLI commands (for programmatic usage)
+export { generateCommand } from './commands/generate.command';

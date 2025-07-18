@@ -21,6 +21,8 @@ const logger = new GrpcLogger({
  * Validates command options
  */
 function validateOptions(options: GenerateCommandOptions): void {
+    logger.debug(`Validating command options: proto=${options.proto}, output=${options.output}`);
+
     if (!options.proto || typeof options.proto !== 'string') {
         throw new Error('Proto path is required and must be a string');
     }
@@ -45,6 +47,8 @@ function validateOptions(options: GenerateCommandOptions): void {
     } catch {
         throw new Error(`Cannot write to output directory: ${options.output}`);
     }
+
+    logger.debug('Command options validation completed');
 }
 
 /**
@@ -59,7 +63,7 @@ function normalizeProtoPath(protoPath: string, silent: boolean): string {
             const result = `${normalizedPath}**/*.proto`;
 
             if (!silent) {
-                logger.log(`Directory detected, using pattern: ${result}`);
+                logger.lifecycle('Directory detected, using pattern', { pattern: result });
             }
 
             return result;
@@ -76,11 +80,15 @@ function normalizeProtoPath(protoPath: string, silent: boolean): string {
  */
 function findProtoFiles(pattern: string): string[] {
     try {
+        logger.debug(`Finding proto files with pattern: ${pattern}`);
+
         const files = globSync(pattern, {
             ignore: ['node_modules/**', '**/node_modules/**'],
             absolute: true,
             nodir: true,
         });
+
+        logger.debug(`Found ${files.length} proto files`);
 
         // Validate that found files actually exist and are readable
         const validFiles = files.filter(file => {
@@ -92,6 +100,8 @@ function findProtoFiles(pattern: string): string[] {
                 return false;
             }
         });
+
+        logger.debug(`Valid proto files: ${validFiles.length}/${files.length}`);
 
         return validFiles;
     } catch (error) {
@@ -120,7 +130,7 @@ function ensureOutputDirectory(outputPath: string, silent: boolean): void {
 
         if (!existsSync(outputDir)) {
             if (!silent) {
-                logger.log(`Creating directory: ${outputDir}`);
+                logger.lifecycle('Creating directory', { path: outputDir });
             }
             mkdirSync(outputDir, { recursive: true });
         }
@@ -137,6 +147,8 @@ function ensureOutputDirectory(outputPath: string, silent: boolean): void {
  */
 async function loadProtoFile(protoFile: string): Promise<protobuf.Root> {
     try {
+        logger.debug(`Loading proto file: ${protoFile}`);
+
         // Verify file exists and is readable
         accessSync(protoFile, constants.R_OK);
 
@@ -146,6 +158,7 @@ async function loadProtoFile(protoFile: string): Promise<protobuf.Root> {
             throw new Error('Proto file loaded but returned null');
         }
 
+        logger.debug(`Successfully loaded proto file: ${protoFile}`);
         return root;
     } catch (error) {
         if (error.message.includes('ENOENT')) {
@@ -164,6 +177,8 @@ function writeTypesToFile(content: string, outputPath: string): void {
     }
 
     try {
+        logger.debug(`Writing types to file: ${outputPath}`);
+
         // Ensure directory exists
         ensureOutputDirectory(outputPath, true);
 
@@ -174,6 +189,8 @@ function writeTypesToFile(content: string, outputPath: string): void {
         if (!existsSync(outputPath)) {
             throw new Error('File was not created successfully');
         }
+
+        logger.debug(`Successfully wrote types to file: ${outputPath}`);
     } catch (error) {
         throw new Error(`Failed to write types to ${outputPath}: ${error.message}`);
     }
@@ -207,7 +224,7 @@ async function generateTypesForFile(
 ): Promise<void> {
     try {
         if (!silent) {
-            logger.log(`Processing: ${protoFile}`);
+            logger.lifecycle('Processing proto file', { file: protoFile });
         }
 
         const outputFile = getOutputPath(protoFile, outputDir);
@@ -227,7 +244,10 @@ async function generateTypesForFile(
         writeTypesToFile(typeDefinitions, outputFile);
 
         if (!silent) {
-            logger.log(`Generated: ${protoFile} → ${outputFile}`);
+            logger.lifecycle('Generated types successfully', {
+                input: protoFile,
+                output: outputFile,
+            });
         }
     } catch (error) {
         // Log error but don't throw to allow other files to process
@@ -254,7 +274,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         }
 
         if (!options.silent) {
-            logger.log(`Found ${protoFiles.length} proto file(s)`);
+            logger.lifecycle('Found proto files', { count: protoFiles.length });
         }
 
         // Create type generation options
@@ -280,7 +300,10 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         // Report results
         if (!options.silent) {
-            logger.log(`Processing complete: ${processedCount} succeeded, ${errorCount} failed`);
+            logger.lifecycle('Processing complete', {
+                succeeded: processedCount,
+                failed: errorCount,
+            });
         }
 
         if (processedCount === 0) {
@@ -288,7 +311,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         }
 
         if (errorCount > 0 && !options.silent) {
-            console.warn(`Warning: ${errorCount} files failed to process`);
+            logger.warn(`Warning: ${errorCount} files failed to process`);
         }
     } catch (error) {
         console.error('Generation failed:', error.message);
