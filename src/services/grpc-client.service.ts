@@ -86,11 +86,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         if (!options) {
             throw new Error('GRPC_OPTIONS is required');
         }
-        
+
         if (!options.protoPath || typeof options.protoPath !== 'string') {
             throw new Error('protoPath is required in gRPC options');
         }
-        
+
         if (!options.package || typeof options.package !== 'string') {
             throw new Error('package is required in gRPC options');
         }
@@ -109,7 +109,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         if (!this.protoLoaderService) {
             throw new Error('ProtoLoaderService is not available');
         }
-        
+
         try {
             this.logger.lifecycle('GrpcClientService starting', {
                 maxCacheSize: this.CLIENT_CACHE_TTL,
@@ -203,12 +203,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         if (!serviceName || typeof serviceName !== 'string') {
             throw new Error('Service name is required and must be a string');
         }
-        
+
         // Validate options
         if (options !== undefined && (typeof options !== 'object' || options === null)) {
             throw new Error('Options must be an object');
         }
-        
+
         // Validate URL if provided
         if (options?.url !== undefined && typeof options.url !== 'string') {
             throw new Error('URL option must be a string');
@@ -736,24 +736,27 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     private getServiceConstructor(serviceName: string): any {
         try {
             const packageDefinition = this.protoLoaderService.getProtoDefinition();
-            
+
             if (!packageDefinition) {
                 throw new Error('gRPC services not loaded yet');
             }
-            
+
             const servicePath = this.findServicePath(packageDefinition, serviceName);
 
             if (!servicePath) {
                 throw new Error(`Service '${serviceName}' not found in proto definition`);
             }
-            
+
             if (typeof servicePath !== 'function') {
                 throw new Error(`'${serviceName}' is not a valid constructor function`);
             }
 
             return servicePath;
         } catch (error) {
-            if (error.message.includes('not loaded yet') || error.message.includes('Proto not loaded')) {
+            if (
+                error.message.includes('not loaded yet') ||
+                error.message.includes('Proto not loaded')
+            ) {
                 throw new Error('Service lookup failed');
             }
             throw error;
@@ -806,7 +809,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     private createClient(serviceConstructor: any, options: GrpcClientOptions): any {
         try {
             const credentials = options.secure
-                ? grpc.credentials.createSsl(options.rootCerts, options.privateKey, options.certChain)
+                ? grpc.credentials.createSsl(
+                      options.rootCerts,
+                      options.privateKey,
+                      options.certChain,
+                  )
                 : grpc.credentials.createInsecure();
 
             const client = new serviceConstructor(options.url, credentials, {
@@ -820,7 +827,9 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
             return client;
         } catch (error) {
-            throw new Error(`Failed to create gRPC client for service ${options.service}: ${error.message}`);
+            throw new Error(
+                `Failed to create gRPC client for service ${options.service}: ${error.message}`,
+            );
         }
     }
 }
