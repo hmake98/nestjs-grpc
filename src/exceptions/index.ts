@@ -1,2 +1,2 @@
-export * from './grpc.exception';
-export * from './grpc.exception-filter';
+export { GrpcException } from './grpc.exception';
+export { GrpcExceptionFilter } from './grpc.exception-filter';

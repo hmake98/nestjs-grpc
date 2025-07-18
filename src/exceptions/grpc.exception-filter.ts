@@ -1,332 +1,152 @@
-import { status, Metadata } from '@grpc/grpc-js';
-import {
-    Catch,
-    RpcExceptionFilter,
-    ArgumentsHost,
-    HttpException,
-    HttpStatus,
-    Logger,
-} from '@nestjs/common';
-import { RpcException } from '@nestjs/microservices';
+import { ArgumentsHost, Catch, RpcExceptionFilter } from '@nestjs/common';
 import { Observable, throwError } from 'rxjs';
 
-import { GrpcErrorCode } from '../constants';
-import { GrpcErrorResponse, GrpcErrorDetails } from '../interfaces';
+import { GrpcLogger } from '../utils/logger';
 
 import { GrpcException } from './grpc.exception';
 
+import type { GrpcExceptionFilterOptions, GrpcErrorResponse } from '../interfaces';
+
 /**
- * Enhanced exception filter that handles gRPC exceptions with improved error handling
+ * Global exception filter for gRPC services
  */
-@Catch(RpcException)
-export class GrpcExceptionFilter implements RpcExceptionFilter<RpcException> {
-    private readonly logger = new Logger(GrpcExceptionFilter.name);
+@Catch()
+export class GrpcExceptionFilter implements RpcExceptionFilter<any> {
+    private readonly logger: GrpcLogger;
+    private readonly options: Required<GrpcExceptionFilterOptions>;
 
-    catch(exception: RpcException, _host: ArgumentsHost): Observable<any> {
+    constructor(options: GrpcExceptionFilterOptions = {}) {
+        this.options = {
+            enableLogging: options.enableLogging ?? true,
+            maxMessageLength: options.maxMessageLength ?? 1000,
+            fallbackMessage: options.fallbackMessage ?? 'Internal server error occurred',
+            fallbackCode: options.fallbackCode ?? 13, // INTERNAL
+        };
+
+        this.logger = new GrpcLogger({
+            enabled: this.options.enableLogging,
+            level: 'error',
+            context: 'GrpcExceptionFilter',
+        });
+    }
+
+    /**
+     * Catch and handle exceptions
+     */
+    catch(exception: any, _host: ArgumentsHost): Observable<any> {
         try {
-            const grpcError = this.processException(exception);
-            return throwError(() => grpcError);
+            const error = this.normalizeError(exception);
+
+            if (this.options.enableLogging) {
+                this.logError(error, exception);
+            }
+
+            return throwError(() => error);
         } catch (filterError) {
-            // Fallback error handling if filter itself fails
-            this.logger.error('Exception filter failed:', filterError);
-            return throwError(() => this.createFallbackError(exception));
-        }
-    }
-
-    /**
-     * Processes the exception and converts it to gRPC format
-     */
-    private processException(exception: RpcException): GrpcErrorResponse {
-        try {
-            if (exception instanceof GrpcException) {
-                // Handle custom GrpcException
-                return this.handleGrpcException(exception);
-            } else {
-                // Handle generic RpcException
-                return this.handleGenericRpcException(exception);
-            }
-        } catch (error) {
-            this.logger.warn('Error processing exception, using fallback:', error.message);
-            return this.createFallbackError(exception);
-        }
-    }
-
-    /**
-     * Handles GrpcException instances
-     */
-    private handleGrpcException(exception: GrpcException): GrpcErrorResponse {
-        try {
-            const statusCode = this.validateStatusCode(exception.getCode());
-            const message = this.validateMessage(exception.message);
-            const details = this.sanitizeDetails(exception.getDetails());
-            const metadata = this.validateMetadata(exception.toMetadata());
-
-            return {
-                code: statusCode,
-                message,
-                details,
-                metadata,
+            // Fallback if normalization fails
+            const fallbackError: GrpcErrorResponse = {
+                code: this.options.fallbackCode,
+                message: this.options.fallbackMessage,
+                details: { originalError: String(exception) },
             };
-        } catch (error) {
-            this.logger.warn('Error handling GrpcException:', error.message);
-            return this.createFallbackError(exception);
+
+            if (this.options.enableLogging) {
+                this.logger.error('Exception filter failed to process error', filterError);
+                this.logger.error('Original exception', exception);
+            }
+
+            return throwError(() => fallbackError);
         }
     }
 
     /**
-     * Handles generic RpcException instances
+     * Normalizes different types of errors to gRPC format
      */
-    private handleGenericRpcException(exception: RpcException): GrpcErrorResponse {
-        try {
+    private normalizeError(exception: any): GrpcErrorResponse {
+        // If it's already a GrpcException, extract its data
+        if (exception instanceof GrpcException) {
+            return {
+                code: exception.getCode(),
+                message: exception.message,
+                details: exception.getDetails(),
+                metadata: exception.getMetadata(),
+            };
+        }
+
+        // If it's a NestJS RpcException, try to extract gRPC data
+        if (exception && typeof exception.getError === 'function') {
             const error = exception.getError();
-            let statusCode: number;
-            let message: string;
-            let details: any = null;
-            const metadata: Metadata = new Metadata();
-
-            if (error instanceof HttpException) {
-                // Map HTTP exception to gRPC
-                statusCode = this.mapHttpToGrpcStatus(error.getStatus());
-                message = this.validateMessage(error.message);
-
-                // Add HTTP status to metadata
-                this.safeAddMetadata(metadata, 'http-status', error.getStatus().toString());
-
-                // Add response data to details if available
-                const response = error.getResponse();
-                if (response && typeof response === 'object') {
-                    details = this.sanitizeDetails(response);
-                }
-            } else {
-                // Handle other error types
-                statusCode = GrpcErrorCode.UNKNOWN;
-
-                if (typeof error === 'object' && error !== null) {
-                    // Extract message from error object
-                    message = this.extractMessage(error);
-
-                    // Check for status property
-                    if ('status' in error) {
-                        const httpStatus = this.parseHttpStatus(error.status);
-                        if (httpStatus !== null) {
-                            statusCode = this.mapHttpToGrpcStatus(httpStatus);
-                            this.safeAddMetadata(metadata, 'http-status', httpStatus.toString());
-                        }
-                    }
-
-                    // Include error object as details
-                    details = this.sanitizeDetails(error);
-                } else {
-                    // Handle primitive error values
-                    message = this.validateMessage(String(error));
-                }
+            if (error && typeof error === 'object') {
+                return {
+                    code: error.code ?? 13, // INTERNAL
+                    message: error.message ?? exception.message ?? 'Internal server error',
+                    details: error.details,
+                    metadata: error.metadata,
+                };
             }
+        }
 
+        // Handle standard Error objects
+        if (exception instanceof Error) {
             return {
-                code: this.validateStatusCode(statusCode),
-                message,
-                details,
-                metadata,
+                code: 13, // INTERNAL
+                message: this.truncateMessage(exception.message),
+                details: {
+                    name: exception.name,
+                    stack: exception.stack,
+                },
             };
-        } catch (error) {
-            this.logger.warn('Error handling generic RpcException:', error.message);
-            return this.createFallbackError(exception);
-        }
-    }
-
-    /**
-     * Extracts message from error object safely
-     */
-    private extractMessage(error: any): string {
-        if (error.message && typeof error.message === 'string') {
-            return this.validateMessage(error.message);
         }
 
-        if (error.error && typeof error.error === 'string') {
-            return this.validateMessage(error.error);
-        }
-
-        return 'Unknown error';
-    }
-
-    /**
-     * Parses HTTP status from various input types
-     */
-    private parseHttpStatus(status: any): number | null {
-        if (typeof status === 'number' && Number.isInteger(status) && status > 0) {
-            return status;
-        }
-
-        if (typeof status === 'string') {
-            const parsed = parseInt(status, 10);
-            if (!isNaN(parsed) && parsed > 0) {
-                return parsed;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Validates and normalizes status codes
-     */
-    private validateStatusCode(code: any): number {
-        // Check if it's a valid gRPC status code (0-16)
-        if (typeof code === 'number' && Number.isInteger(code) && code >= 0 && code <= 16) {
-            return code;
-        }
-
-        this.logger.warn(`Invalid gRPC status code: ${code}, using UNKNOWN`);
-        return GrpcErrorCode.UNKNOWN;
-    }
-
-    /**
-     * Validates and sanitizes error messages
-     */
-    private validateMessage(message: any): string {
-        if (typeof message === 'string' && message.trim().length > 0) {
-            // Truncate very long messages to prevent issues
-            return message.trim().substring(0, 1000);
-        }
-
-        return 'An error occurred';
-    }
-
-    /**
-     * Validates metadata object
-     */
-    private validateMetadata(metadata: any): Metadata {
-        if (metadata instanceof Metadata) {
-            return metadata;
-        }
-
-        this.logger.warn('Invalid metadata provided, using empty metadata');
-        return new Metadata();
-    }
-
-    /**
-     * Safely adds metadata with error handling
-     */
-    private safeAddMetadata(metadata: Metadata, key: string, value: string): void {
-        try {
-            if (key && typeof key === 'string' && value && typeof value === 'string') {
-                metadata.add(key, value);
-            }
-        } catch (error) {
-            this.logger.warn(`Error adding metadata ${key}:${value}:`, error.message);
-        }
-    }
-
-    /**
-     * Sanitizes details object to prevent circular references and ensure serializability
-     */
-    private sanitizeDetails(details: any): GrpcErrorDetails | null {
-        if (details === null || details === undefined) {
-            return null;
-        }
-
-        try {
-            // Test if the object can be serialized
-            JSON.stringify(details);
-            return details;
-        } catch {
-            // If serialization fails, create a safe representation
-            if (typeof details === 'object') {
-                try {
-                    const safeDetails: GrpcErrorDetails = {};
-
-                    for (const [key, value] of Object.entries(details)) {
-                        if (
-                            typeof value === 'string' ||
-                            typeof value === 'number' ||
-                            typeof value === 'boolean'
-                        ) {
-                            safeDetails[key] = value;
-                        } else if (value === null || value === undefined) {
-                            safeDetails[key] = value;
-                        } else {
-                            safeDetails[key] = String(value);
-                        }
-                    }
-
-                    return safeDetails;
-                } catch {
-                    return { error: 'Details could not be serialized' };
-                }
-            } else {
-                return { value: String(details) };
-            }
-        }
-    }
-
-    /**
-     * Creates a fallback error when all else fails
-     */
-    private createFallbackError(_exception: RpcException): GrpcErrorResponse {
+        // Handle unknown error types
         return {
-            code: GrpcErrorCode.INTERNAL,
-            message: 'Internal server error occurred',
-            details: null,
-            metadata: new Metadata(),
+            code: 13, // INTERNAL
+            message: this.truncateMessage(
+                typeof exception === 'string' ? exception : 'Unknown error occurred',
+            ),
+            details: {
+                originalError: exception,
+            },
         };
     }
 
     /**
-     * Maps HTTP status code to gRPC status code with validation
+     * Logs error information
      */
-    private mapHttpToGrpcStatus(httpStatus: number): number {
-        // Validate input
-        if (!Number.isInteger(httpStatus) || httpStatus < 100 || httpStatus > 599) {
-            this.logger.warn(`Invalid HTTP status code: ${httpStatus}`);
-            return status.UNKNOWN;
+    private logError(error: GrpcErrorResponse, _originalException: any): void {
+        try {
+            const errorMessage = `gRPC error: ${error.message}`;
+            const errorDetails = `Code: ${error.code}`;
+
+            this.logger.error(errorMessage, errorDetails);
+
+            // Log additional details if available
+            if (error.details && typeof error.details === 'object') {
+                try {
+                    const detailsJson = JSON.stringify(error.details);
+                    if (detailsJson.length <= this.options.maxMessageLength) {
+                        this.logger.error('Error details', detailsJson);
+                    }
+                } catch {
+                    // Ignore JSON stringify errors
+                }
+            }
+        } catch {
+            // Ignore logging errors
+        }
+    }
+
+    /**
+     * Truncates error messages to prevent excessive logging
+     */
+    private truncateMessage(message: string): string {
+        if (!message || typeof message !== 'string') {
+            return 'Unknown error';
         }
 
-        switch (httpStatus) {
-            case HttpStatus.BAD_REQUEST:
-                return status.INVALID_ARGUMENT;
-            case HttpStatus.UNAUTHORIZED:
-                return status.UNAUTHENTICATED;
-            case HttpStatus.FORBIDDEN:
-                return status.PERMISSION_DENIED;
-            case HttpStatus.NOT_FOUND:
-                return status.NOT_FOUND;
-            case HttpStatus.CONFLICT:
-                return status.ALREADY_EXISTS;
-            case HttpStatus.GONE:
-                return status.NOT_FOUND;
-            case HttpStatus.TOO_MANY_REQUESTS:
-                return status.RESOURCE_EXHAUSTED;
-            case HttpStatus.INTERNAL_SERVER_ERROR:
-                return status.INTERNAL;
-            case HttpStatus.NOT_IMPLEMENTED:
-                return status.UNIMPLEMENTED;
-            case HttpStatus.BAD_GATEWAY:
-            case HttpStatus.SERVICE_UNAVAILABLE:
-            case HttpStatus.GATEWAY_TIMEOUT:
-                return status.UNAVAILABLE;
-            case HttpStatus.REQUEST_TIMEOUT:
-                return status.DEADLINE_EXCEEDED;
-            case HttpStatus.PRECONDITION_FAILED:
-                return status.FAILED_PRECONDITION;
-            case HttpStatus.PAYLOAD_TOO_LARGE:
-                return status.RESOURCE_EXHAUSTED;
-            case HttpStatus.UNPROCESSABLE_ENTITY:
-                return status.INVALID_ARGUMENT;
-            case HttpStatus.EXPECTATION_FAILED:
-                return status.FAILED_PRECONDITION;
-            case HttpStatus.I_AM_A_TEAPOT:
-                return status.UNIMPLEMENTED;
-            case HttpStatus.MISDIRECTED:
-                return status.INVALID_ARGUMENT;
-            default:
-                // For unknown HTTP status codes, use a sensible default based on status class
-                if (httpStatus >= 400 && httpStatus < 500) {
-                    return status.INVALID_ARGUMENT;
-                } else if (httpStatus >= 500) {
-                    return status.INTERNAL;
-                } else {
-                    return status.UNKNOWN;
-                }
-        }
+        const trimmed = message.trim();
+        return trimmed.length > this.options.maxMessageLength
+            ? `${trimmed.substring(0, this.options.maxMessageLength)}...`
+            : trimmed;
     }
 }

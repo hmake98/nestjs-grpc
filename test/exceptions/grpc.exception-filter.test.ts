@@ -12,11 +12,12 @@ describe('GrpcExceptionFilter', () => {
     let mockHost: ArgumentsHost;
 
     beforeEach(async () => {
-        const module: TestingModule = await Test.createTestingModule({
-            providers: [GrpcExceptionFilter],
-        }).compile();
-
-        filter = module.get<GrpcExceptionFilter>(GrpcExceptionFilter);
+        filter = new GrpcExceptionFilter({
+            enableLogging: true,
+            maxMessageLength: 1000,
+            fallbackMessage: 'Internal server error occurred',
+            fallbackCode: 13,
+        });
         mockHost = {
             switchToRpc: jest.fn(),
             switchToHttp: jest.fn(),

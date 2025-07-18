@@ -20,23 +20,11 @@ const logger = new GrpcLogger({
  * Safely read package version with fallback
  */
 function getPackageVersion(): string {
-    const fallbackVersion = '1.2.4';
+    const packagePath = join(__dirname, '..', '..', 'package.json');
+    const packageContent = readFileSync(packagePath, 'utf8');
+    const packageJson = JSON.parse(packageContent);
 
-    try {
-        const packagePath = join(__dirname, '..', '..', 'package.json');
-        const packageContent = readFileSync(packagePath, 'utf8');
-        const packageJson = JSON.parse(packageContent);
-
-        if (!packageJson.version || typeof packageJson.version !== 'string') {
-            logger.warn('Warning: Invalid version in package.json, using fallback');
-            return fallbackVersion;
-        }
-
-        return packageJson.version;
-    } catch {
-        logger.warn('Warning: Could not read package version, using fallback');
-        return fallbackVersion;
-    }
+    return packageJson.version;
 }
 
 /**
@@ -82,12 +70,12 @@ function setupErrorHandling(): void {
     });
 
     process.on('SIGTERM', () => {
-        logger.log('Received SIGTERM, shutting down gracefully');
+        logger.lifecycle('Received SIGTERM, shutting down gracefully');
         process.exit(0);
     });
 
     process.on('SIGINT', () => {
-        logger.log('Received SIGINT, shutting down gracefully');
+        logger.lifecycle('Received SIGINT, shutting down gracefully');
         process.exit(0);
     });
 }
@@ -105,6 +93,8 @@ function initializeCli(): void {
 
     const program = new Command();
     const version = getPackageVersion();
+
+    logger.lifecycle('Initializing CLI', { version });
 
     program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(version);
 
@@ -127,7 +117,12 @@ function initializeCli(): void {
         .option('-s, --silent', 'Disable all logging except errors')
         .action(async options => {
             try {
+                logger.lifecycle('Starting generate command', {
+                    proto: options.proto,
+                    output: options.output,
+                });
                 await generateCommand(options);
+                logger.lifecycle('Generate command completed successfully');
             } catch (error) {
                 logger.error('Command failed', error instanceof Error ? error : String(error));
                 process.exit(1);

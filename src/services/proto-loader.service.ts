@@ -9,13 +9,44 @@ import { GrpcOptions } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
 import { loadProto, getServiceByName } from '../utils/proto-utils';
 
+/**
+ * Service responsible for loading and managing protobuf definitions.
+ * Handles both single proto files and directories with multiple proto files.
+ * Provides caching and validation to ensure proto definitions are loaded efficiently.
+ *
+ * Features:
+ * - Async loading with promise caching to prevent duplicate loads
+ * - Support for glob patterns and directory scanning
+ * - Comprehensive error handling and validation
+ * - Service discovery and method enumeration
+ *
+ * @example
+ * ```typescript
+ * // Inject the service
+ * constructor(private protoLoader: ProtoLoaderService) {}
+ *
+ * // Get loaded proto definition
+ * const definition = this.protoLoader.getProtoDefinition();
+ *
+ * // Load a specific service
+ * const authService = await this.protoLoader.loadService('AuthService');
+ * ```
+ */
 @Injectable()
 export class ProtoLoaderService implements OnModuleInit {
     private readonly logger: GrpcLogger;
+    /** Cached proto definition object */
     private protoDefinition: any = null;
+    /** Flag indicating if proto files have been loaded */
     private isLoaded = false;
+    /** Promise for ongoing load operation to prevent concurrent loads */
     private loadingPromise: Promise<any> | null = null;
 
+    /**
+     * Constructs the ProtoLoaderService with gRPC options
+     *
+     * @param options - Global gRPC configuration including proto paths and packages
+     */
     constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {
         this.logger = new GrpcLogger({
             ...options.logging,
@@ -25,7 +56,11 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Validates gRPC options
+     * Validates that required gRPC options are properly configured.
+     * Ensures proto path and package name are valid.
+     *
+     * @throws Error if validation fails
+     * @private
      */
     private validateOptions(): void {
         if (!this.options) {
@@ -40,7 +75,7 @@ export class ProtoLoaderService implements OnModuleInit {
             throw new Error('package is required and must be a string');
         }
 
-        if (this.options.logging?.debug) {
+        if (this.options.logging?.level === 'debug') {
             this.logger.debug(
                 `ProtoLoader initialized with path: ${this.options.protoPath}, package: ${this.options.package}`,
             );
@@ -48,15 +83,21 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Initialize the service on module initialization
+     * Lifecycle hook called when the module is initialized.
+     * Automatically loads proto files based on the configured options.
+     *
+     * @throws Error if proto loading fails
      */
     async onModuleInit(): Promise<void> {
         try {
-            this.logger.log(`Loading proto files from: ${this.options.protoPath}`);
+            this.logger.lifecycle('Loading proto files', {
+                path: this.options.protoPath,
+                package: this.options.package,
+            });
 
             await this.load();
 
-            this.logger.log('Proto files loaded successfully');
+            this.logger.lifecycle('Proto files loaded successfully');
         } catch (error) {
             this.logger.error('Failed to load proto files', error);
             throw error;
@@ -64,7 +105,17 @@ export class ProtoLoaderService implements OnModuleInit {
     }
 
     /**
-     * Loads the proto file(s) with error handling
+     * Loads proto files and returns the parsed service definitions.
+     * Implements caching to prevent duplicate loads and handles concurrent requests.
+     *
+     * @returns Promise that resolves to the loaded proto service definitions
+     * @throws Error if loading fails
+     *
+     * @example
+     * ```typescript
+     * const services = await this.protoLoader.load();
+     * console.log('Available services:', Object.keys(services));
+     * ```
      */
     async load(): Promise<any> {
         // Return existing loading promise if already in progress
@@ -84,7 +135,7 @@ export class ProtoLoaderService implements OnModuleInit {
             const result = await this.loadingPromise;
             this.isLoaded = true;
 
-            if (this.options.logging?.debug) {
+            if (this.options.logging?.level === 'debug') {
                 const serviceNames = this.getLoadedServiceNames(result);
                 this.logger.debug(`Loaded services: ${serviceNames.join(', ')}`);
             }
@@ -163,14 +214,14 @@ export class ProtoLoaderService implements OnModuleInit {
             throw new Error(`No proto files found in ${protoPath}`);
         }
 
-        this.logger.log(`Found ${protoFiles.length} proto files`);
+        this.logger.lifecycle(`Found ${protoFiles.length} proto files`);
 
         const services = {};
         const errors: string[] = [];
 
         for (const file of protoFiles) {
             try {
-                if (this.options.logging?.debug) {
+                if (this.options.logging?.level === 'debug') {
                     this.logger.debug(`Loading proto file: ${file}`);
                 }
 
@@ -179,13 +230,16 @@ export class ProtoLoaderService implements OnModuleInit {
 
                 if (fileServices && typeof fileServices === 'object') {
                     Object.assign(services, fileServices);
+                    this.logger.debug(
+                        `Loaded services from ${file}: ${Object.keys(fileServices).join(', ')}`,
+                    );
                 }
             } catch (error) {
                 const errorMsg = `Error loading proto file ${file}: ${error.message}`;
                 errors.push(errorMsg);
 
                 if (this.options.logging?.logErrors !== false) {
-                    this.logger.warn(errorMsg);
+                    this.logger.error(errorMsg, error);
                 }
             }
         }
@@ -193,6 +247,13 @@ export class ProtoLoaderService implements OnModuleInit {
         if (Object.keys(services).length === 0) {
             throw new Error(`No services loaded successfully. Errors: ${errors.join('; ')}`);
         }
+
+        this.logger.lifecycle('Proto files loaded successfully', {
+            totalFiles: protoFiles.length,
+            successfulFiles: protoFiles.length - errors.length,
+            failedFiles: errors.length,
+            totalServices: Object.keys(services).length,
+        });
 
         this.protoDefinition = services;
         return services;
