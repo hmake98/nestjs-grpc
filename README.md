@@ -320,8 +320,8 @@ export interface User {
 
 // Service client interface (when --no-client-interfaces is not used)
 export interface AuthServiceClient {
-    login(request: LoginRequest): Promise<LoginResponse>;
-    validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse>;
+    login(request: LoginRequest): Observable<LoginResponse>;
+    validateToken(request: ValidateTokenRequest): Observable<ValidateTokenResponse>;
     streamUsers(request: StreamUsersRequest): Observable<User>;
 }
 ```
@@ -364,11 +364,8 @@ import { GrpcModule } from 'nestjs-grpc';
                 package: configService.get('GRPC_PACKAGE', 'service'),
                 url: configService.get('GRPC_URL', 'localhost:50051'),
                 secure: configService.get('GRPC_SECURE', false),
-                maxSendMessageLength: configService.get('GRPC_MAX_SEND_SIZE', 4 * 1024 * 1024),
-                maxReceiveMessageLength: configService.get(
-                    'GRPC_MAX_RECEIVE_SIZE',
-                    4 * 1024 * 1024,
-                ),
+                maxSendMessageSize: configService.get('GRPC_MAX_SEND_SIZE', 4 * 1024 * 1024),
+                maxReceiveMessageSize: configService.get('GRPC_MAX_RECEIVE_SIZE', 4 * 1024 * 1024),
                 logging: {
                     level: configService.get('NODE_ENV') === 'development' ? 'debug' : 'log',
                     logErrors: true,
@@ -437,12 +434,11 @@ import { PaymentClientService } from './payment-client.service';
         TypeOrmModule.forFeature([OrderEntity]),
         GrpcModule.forFeature({
             controllers: [OrderController],
-            providers: [OrderService],
             services: [PaymentClientService],
-            imports: [TypeOrmModule.forFeature([OrderEntity])],
-            exports: [OrderService],
         }),
     ],
+    providers: [OrderService],
+    exports: [OrderService],
 })
 export class OrderModule {}
 ```
@@ -454,7 +450,7 @@ export class OrderModule {}
 ```typescript
 @GrpcController('DataService')
 export class DataController {
-    @GrpcMethod('StreamData')
+    @GrpcStream('StreamData')
     streamData(request: StreamDataRequest): Observable<DataChunk> {
         return new Observable(observer => {
             const chunks = this.generateDataChunks(request.size);
@@ -514,7 +510,7 @@ export class UploadClientService {
 export class ChatController {
     private readonly activeConnections = new Map<string, Observer<ChatMessage>>();
 
-    @GrpcMethod('Chat')
+    @GrpcStream('Chat')
     chat(request: Observable<ChatMessage>): Observable<ChatMessage> {
         return new Observable(observer => {
             const connectionId = this.generateConnectionId();
@@ -776,10 +772,10 @@ export class AppModule {}
     imports: [
         GrpcModule.forFeature({
             services: [UserClientService, AuthClientService],
-            providers: [UserService],
             controllers: [UserController],
         }),
     ],
+    providers: [UserService],
     exports: [UserService],
 })
 export class UserModule {}
@@ -921,7 +917,7 @@ export class UserController {
         return { user: this.toGrpcUser(user) };
     }
 
-    @GrpcMethod('StreamUsers')
+    @GrpcStream('StreamUsers')
     streamUsers(request: StreamUsersRequest): Observable<User> {
         return new Observable(observer => {
             this.userService
@@ -995,9 +991,9 @@ When debug logging is enabled, you'll see detailed information:
 ```
 [Nest] 12345  - 01/01/2025, 10:00:00 AM     LOG [ProtoLoader] Loading proto files from: ./protos/auth.proto
 [Nest] 12345  - 01/01/2025, 10:00:00 AM   DEBUG [ProtoLoader] Loaded services: AuthService
-[Nest] 12345  - 01/01/2025, 10:00:00 AM     LOG [GrpcRegistry] Starting gRPC service discovery...
-[Nest] 12345  - 01/01/2025, 10:00:00 AM     LOG [GrpcRegistry] Registered controller: AuthService
-[Nest] 12345  - 01/01/2025, 10:00:00 AM   DEBUG [GrpcRegistry] Found gRPC method: AuthController.login
+[Nest] 12345  - 01/01/2025, 10:00:00 AM     LOG [GrpcRegistryService] Starting gRPC service discovery...
+[Nest] 12345  - 01/01/2025, 10:00:00 AM     LOG [GrpcRegistryService] Registered controller: AuthService
+[Nest] 12345  - 01/01/2025, 10:00:00 AM   DEBUG [GrpcRegistryService] Found gRPC method: AuthController.login
 [Nest] 12345  - 01/01/2025, 10:00:01 AM     LOG [GrpcClient] Created gRPC client for service: AuthService
 [Nest] 12345  - 01/01/2025, 10:00:01 AM   DEBUG [GrpcClient] Calling unary method: AuthService.login (took 45ms)
 ```
@@ -1022,38 +1018,29 @@ interface GrpcOptions {
     certChain?: Buffer; // Certificate chain for TLS
 
     // Message Limits
-    maxSendMessageLength?: number; // Max send message size (default: 4MB)
-    maxReceiveMessageLength?: number; // Max receive message size (default: 4MB)
-
-    // Timeouts
-    keepaliveTimeMs?: number; // Keepalive time (default: 2 hours)
-    keepaliveTimeoutMs?: number; // Keepalive timeout (default: 20 seconds)
-    keepalivePermitWithoutCalls?: boolean; // Allow keepalive without calls
-
-    // Retry Configuration
-    maxRetryAttempts?: number; // Max retry attempts (default: 3)
-    retryDelayMs?: number; // Delay between retries (default: 1000ms)
+    maxSendMessageSize?: number; // Max send message size (default: 4MB)
+    maxReceiveMessageSize?: number; // Max receive message size (default: 4MB)
 
     // Proto Loader Options
-    protoLoaderOptions?: {
+    loaderOptions?: {
+        keepCase?: boolean; // Keep field name case (default: true)
+        longs?: string | Function; // Long type conversion (default: String)
+        enums?: string; // Enum type conversion (default: String)
+        defaults?: boolean; // Include default values (default: true)
+        oneofs?: boolean; // Include oneof fields (default: true)
+        arrays?: boolean; // Use arrays for repeated fields (default: true)
+        objects?: boolean; // Use objects for map fields (default: true)
         includeDirs?: string[]; // Include directories for proto files
-        keepCase?: boolean; // Keep field name case (default: false)
-        longs?: string | Function; // Long type conversion
-        enums?: string; // Enum type conversion
-        defaults?: boolean; // Include default values
-        arrays?: boolean; // Use arrays for repeated fields
-        objects?: boolean; // Use objects for map fields
-        oneofs?: boolean; // Include oneof fields
     };
 
     // Logging
     logging?: {
-        enabled?: boolean; // Enable/disable logging
-        level?: LogLevel; // Log level
-        context?: string; // Custom context
-        logErrors?: boolean; // Log errors
-        logPerformance?: boolean; // Log performance metrics
-        logDetails?: boolean; // Log request/response details
+        enabled?: boolean; // Enable/disable logging (default: true)
+        level?: 'debug' | 'verbose' | 'log' | 'warn' | 'error'; // Log level (default: 'log')
+        context?: string; // Custom context (default: 'GrpcModule')
+        logErrors?: boolean; // Log errors (default: true)
+        logPerformance?: boolean; // Log performance metrics (default: false)
+        logDetails?: boolean; // Log request/response details (default: false)
     };
 }
 ```
@@ -1071,11 +1058,18 @@ interface GrpcOptions {
 // Method decorator - marks a method as gRPC handler
 @GrpcMethod(methodName?: string | GrpcMethodOptions)
 
+// Stream decorator - marks a method as gRPC streaming handler
+@GrpcStream(methodName?: string | GrpcMethodOptions)
+
 // Service decorator - marks a class as gRPC service client
 @GrpcService(serviceName: string | GrpcServiceOptions)
 
 // Injection decorator - injects gRPC client
 @InjectGrpcClient(serviceName: string)
+
+// Payload decorators - extract request data
+@GrpcPayload()
+@GrpcStreamPayload()
 ```
 
 #### Modules
@@ -1189,12 +1183,9 @@ GrpcModule.forRoot({
     protoPath: './protos/service.proto',
     package: 'service',
     url: 'localhost:50051',
-    // Enable connection pooling
-    keepaliveTimeMs: 2 * 60 * 60 * 1000, // 2 hours
-    keepaliveTimeoutMs: 20 * 1000, // 20 seconds
-    keepalivePermitWithoutCalls: true,
-    maxSendMessageLength: 16 * 1024 * 1024, // 16MB
-    maxReceiveMessageLength: 16 * 1024 * 1024, // 16MB
+    // Optimize message sizes
+    maxSendMessageSize: 16 * 1024 * 1024, // 16MB
+    maxReceiveMessageSize: 16 * 1024 * 1024, // 16MB
 });
 ```
 

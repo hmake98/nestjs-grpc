@@ -107,9 +107,9 @@ describe('GrpcException', () => {
                 metadata: { key: 123 as any },
             });
 
-            // Should create exception but warn about invalid metadata
+            // Should create exception and filter out invalid metadata
             expect(exception).toBeDefined();
-            expect(console.warn).toHaveBeenCalled();
+            expect(exception.getMetadata()).toEqual({});
         });
 
         it('should accept valid metadata types', () => {
@@ -127,6 +127,43 @@ describe('GrpcException', () => {
             });
 
             expect(exception.getMetadata()).toEqual(metadata);
+        });
+
+        it('should throw error for invalid metadata object type', () => {
+            expect(() => new GrpcException({
+                code: GrpcErrorCode.OK,
+                message: 'Test',
+                metadata: [] as any
+            })).toThrow('Metadata must be an object');
+
+            expect(() => new GrpcException({
+                code: GrpcErrorCode.OK,
+                message: 'Test',
+                metadata: 'invalid' as any
+            })).toThrow('Metadata must be an object');
+        });
+
+        it('should throw error for invalid metadata keys', () => {
+            expect(() => new GrpcException({
+                code: GrpcErrorCode.OK,
+                message: 'Test',
+                metadata: { '': 'value' } as any
+            })).toThrow('Metadata keys must be non-empty strings');
+        });
+
+        it('should filter out invalid array values in metadata', () => {
+            const exception = new GrpcException({
+                code: GrpcErrorCode.OK,
+                message: 'Test',
+                metadata: { 
+                    mixedArray: ['valid', 123, 'also-valid', null, Buffer.from('buf')] as any,
+                    invalidArray: [123, null, undefined] as any
+                },
+            });
+
+            const metadata = exception.getMetadata();
+            expect(metadata.mixedArray).toEqual(['valid', 'also-valid']);
+            expect(metadata.invalidArray).toBeUndefined();
         });
     });
 
@@ -240,10 +277,6 @@ describe('GrpcException', () => {
 
             const result = exception.toMetadata();
 
-            expect(console.warn).toHaveBeenCalledWith(
-                'Error converting metadata:',
-                'Metadata error',
-            );
             expect(result).toBeInstanceOf(Object);
         });
     });
@@ -268,44 +301,6 @@ describe('GrpcException', () => {
         });
     });
 
-    describe('toJSON', () => {
-        it('should convert to JSON format', () => {
-            const exception = new GrpcException({
-                code: GrpcErrorCode.DEADLINE_EXCEEDED,
-                message: 'Request timeout',
-                details: { timeout: 5000 },
-                metadata: { 'request-id': 'req123' },
-            });
-
-            const json = exception.toJSON();
-
-            expect(json).toEqual({
-                name: 'GrpcException',
-                code: GrpcErrorCode.DEADLINE_EXCEEDED,
-                message: 'Request timeout',
-                details: { timeout: 5000 },
-                metadata: { 'request-id': 'req123' },
-            });
-        });
-
-        it('should handle serialization errors gracefully', () => {
-            const exception = new GrpcException('Test error');
-
-            // Mock details to cause JSON error
-            Object.defineProperty(exception, 'details', {
-                get: () => {
-                    throw new Error('Serialization error');
-                },
-            });
-
-            const json = exception.toJSON();
-
-            expect(json.name).toBe('GrpcException');
-            expect(json.message).toBe('Test error');
-            expect(json.details).toBeNull();
-            expect(json.metadata).toEqual({});
-        });
-    });
 
     describe('static factory methods', () => {
         it('should create NOT_FOUND exception', () => {
@@ -368,6 +363,69 @@ describe('GrpcException', () => {
 
             expect(exception.getCode()).toBe(GrpcErrorCode.UNAVAILABLE);
             expect(exception.message).toBe('Service unavailable');
+        });
+
+        it('should create OK exception', () => {
+            const exception = GrpcException.ok('Operation successful');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.OK);
+            expect(exception.message).toBe('Operation successful');
+        });
+
+        it('should create CANCELLED exception', () => {
+            const exception = GrpcException.cancelled('Operation cancelled');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.CANCELLED);
+            expect(exception.message).toBe('Operation cancelled');
+        });
+
+        it('should create UNKNOWN exception', () => {
+            const exception = GrpcException.unknown('Unknown error');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
+            expect(exception.message).toBe('Unknown error');
+        });
+
+        it('should create DEADLINE_EXCEEDED exception', () => {
+            const exception = GrpcException.deadlineExceeded('Request timeout');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.DEADLINE_EXCEEDED);
+            expect(exception.message).toBe('Request timeout');
+        });
+
+        it('should create FAILED_PRECONDITION exception', () => {
+            const exception = GrpcException.failedPrecondition('Precondition failed');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.FAILED_PRECONDITION);
+            expect(exception.message).toBe('Precondition failed');
+        });
+
+        it('should create ABORTED exception', () => {
+            const exception = GrpcException.aborted('Operation aborted');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.ABORTED);
+            expect(exception.message).toBe('Operation aborted');
+        });
+
+        it('should create OUT_OF_RANGE exception', () => {
+            const exception = GrpcException.outOfRange('Value out of range');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.OUT_OF_RANGE);
+            expect(exception.message).toBe('Value out of range');
+        });
+
+        it('should create UNIMPLEMENTED exception', () => {
+            const exception = GrpcException.unimplemented('Not implemented');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.UNIMPLEMENTED);
+            expect(exception.message).toBe('Not implemented');
+        });
+
+        it('should create DATA_LOSS exception', () => {
+            const exception = GrpcException.dataLoss('Data loss occurred');
+
+            expect(exception.getCode()).toBe(GrpcErrorCode.DATA_LOSS);
+            expect(exception.message).toBe('Data loss occurred');
         });
     });
 

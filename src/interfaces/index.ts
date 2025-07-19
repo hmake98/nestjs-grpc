@@ -244,7 +244,7 @@ export interface GrpcOptionsFactory {
 /**
  * Async options for the gRPC module
  */
-export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports'> {
+export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports' | 'providers'> {
     /**
      * Factory function to create gRPC options
      */

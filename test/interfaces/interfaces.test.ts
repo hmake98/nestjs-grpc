@@ -22,7 +22,6 @@ describe('Interfaces', () => {
                 enabled: true,
                 level: 'debug',
                 context: 'TestContext',
-                debug: true,
                 logErrors: true,
                 logPerformance: true,
                 logDetails: true,
@@ -31,7 +30,6 @@ describe('Interfaces', () => {
             expect(loggingOptions.enabled).toBe(true);
             expect(loggingOptions.level).toBe('debug');
             expect(loggingOptions.context).toBe('TestContext');
-            expect(loggingOptions.debug).toBe(true);
             expect(loggingOptions.logErrors).toBe(true);
             expect(loggingOptions.logPerformance).toBe(true);
             expect(loggingOptions.logDetails).toBe(true);
