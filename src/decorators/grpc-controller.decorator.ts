@@ -1,4 +1,4 @@
-import { SetMetadata, Injectable } from '@nestjs/common';
+import { SetMetadata, Injectable, Controller } from '@nestjs/common';
 
 import { GRPC_CONTROLLER_METADATA } from '../constants';
 
@@ -42,6 +42,9 @@ export function GrpcController(
         if (!target || typeof target !== 'function') {
             throw new Error('@GrpcController can only be applied to classes');
         }
+
+        // Apply the NestJS Controller decorator
+        Controller()(target);
 
         // Ensure the class is injectable
         Injectable()(target);
