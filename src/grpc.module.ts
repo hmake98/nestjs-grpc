@@ -8,7 +8,7 @@ import {
     OnModuleInit,
     Inject,
 } from '@nestjs/common';
-import { APP_FILTER, DiscoveryModule, DiscoveryService, MetadataScanner } from '@nestjs/core';
+import { APP_FILTER, DiscoveryModule, DiscoveryService } from '@nestjs/core';
 
 import {
     GRPC_OPTIONS,
@@ -50,14 +50,14 @@ function validateGrpcOptions(options: any): asserts options is GrpcOptions {
     }
 
     if (
-        options.maxSendMessageSize &&
+        options.maxSendMessageSize !== undefined &&
         (typeof options.maxSendMessageSize !== 'number' || options.maxSendMessageSize <= 0)
     ) {
         throw new Error('maxSendMessageSize must be a positive number');
     }
 
     if (
-        options.maxReceiveMessageSize &&
+        options.maxReceiveMessageSize !== undefined &&
         (typeof options.maxReceiveMessageSize !== 'number' || options.maxReceiveMessageSize <= 0)
     ) {
         throw new Error('maxReceiveMessageSize must be a positive number');
@@ -76,6 +76,11 @@ function validateGrpcOptions(options: any): asserts options is GrpcOptions {
     imports: [DiscoveryModule],
 })
 export class GrpcModule {
+    /**
+     * Validates gRPC configuration options (exposed for testing)
+     */
+    static validateGrpcOptions = validateGrpcOptions;
+
     /**
      * Configure the gRPC module with static options
      */
@@ -115,6 +120,7 @@ export class GrpcModule {
 
         const providers: Provider[] = [
             ...this.createAsyncProviders(options),
+            ...(options.providers ?? []),
             ProtoLoaderService,
             GrpcClientService,
             GrpcRegistryService,
@@ -215,7 +221,6 @@ export class GrpcRegistryService implements OnModuleInit {
 
     constructor(
         private readonly discoveryService: DiscoveryService,
-        private readonly metadataScanner: MetadataScanner,
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
     ) {
         this.logger = new GrpcLogger({
