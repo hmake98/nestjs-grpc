@@ -223,17 +223,24 @@ describe('Interfaces', () => {
             expect(options).toBeDefined();
         });
 
-        it('should allow controllers and services', () => {
-            class TestController {}
+        it('should allow services and service registrations', () => {
             class TestService {}
 
             const options: GrpcFeatureOptions = {
-                controllers: [TestController],
                 services: [TestService],
+                serviceRegistrations: [
+                    {
+                        serviceName: 'TestService',
+                        package: 'test',
+                        protoPath: './test.proto',
+                        url: 'localhost:50051',
+                    },
+                ],
             };
 
-            expect(options.controllers).toEqual([TestController]);
             expect(options.services).toEqual([TestService]);
+            expect(options.serviceRegistrations).toHaveLength(1);
+            expect(options.serviceRegistrations![0].serviceName).toBe('TestService');
         });
     });
 

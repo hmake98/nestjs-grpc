@@ -6,7 +6,12 @@ import { GrpcClientService } from '../src/services/grpc-client.service';
 import { ProtoLoaderService } from '../src/services/proto-loader.service';
 import { GrpcExceptionFilter } from '../src/exceptions/grpc.exception-filter';
 import { GrpcOptionsFactory } from '../src/interfaces';
-import { GRPC_OPTIONS, GRPC_CONTROLLER_METADATA, GRPC_SERVICE_METADATA, GRPC_METHOD_METADATA } from '../src/constants';
+import {
+    GRPC_OPTIONS,
+    GRPC_CONTROLLER_METADATA,
+    GRPC_SERVICE_METADATA,
+    GRPC_METHOD_METADATA,
+} from '../src/constants';
 import { GrpcController } from '../src/decorators/grpc-controller.decorator';
 import { GrpcService } from '../src/decorators/grpc-service.decorator';
 import { GrpcMethod } from '../src/decorators/grpc-method.decorator';
@@ -19,6 +24,16 @@ describe('GrpcModule', () => {
         load: jest.fn(),
         getService: jest.fn(),
         getPackageDefinition: jest.fn(),
+        getProtoDefinition: jest.fn().mockReturnValue({
+            TestService: jest.fn().mockImplementation(() => ({
+                // Mock gRPC client methods
+                call: jest.fn(),
+                makeUnaryRequest: jest.fn(),
+                makeServerStreamRequest: jest.fn(),
+                makeClientStreamRequest: jest.fn(),
+                makeBidiStreamRequest: jest.fn(),
+            })),
+        }),
     };
 
     afterEach(async () => {
@@ -37,9 +52,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
             expect(module.get(GRPC_OPTIONS)).toEqual(options);
@@ -124,9 +139,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             const grpcOptions = module.get(GRPC_OPTIONS);
             expect(grpcOptions.protoPath).toBe(options.protoPath);
@@ -149,9 +164,9 @@ describe('GrpcModule', () => {
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
             expect(module.get(GRPC_OPTIONS)).toEqual({
@@ -172,15 +187,13 @@ describe('GrpcModule', () => {
                     GrpcModule.forRootAsync({
                         useFactory: (configService: any) => configService.getConfig(),
                         inject: ['CONFIG_SERVICE'],
-                        providers: [
-                            { provide: 'CONFIG_SERVICE', useValue: mockService }
-                        ]
+                        providers: [{ provide: 'CONFIG_SERVICE', useValue: mockService }],
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
             expect(module.get(GRPC_OPTIONS)).toEqual({
@@ -207,9 +220,9 @@ describe('GrpcModule', () => {
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
             expect(module.get(GRPC_OPTIONS)).toEqual({
@@ -237,9 +250,9 @@ describe('GrpcModule', () => {
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
             expect(module.get(GRPC_OPTIONS)).toEqual({
@@ -256,9 +269,9 @@ describe('GrpcModule', () => {
                         }),
                     ],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile(),
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile(),
             ).rejects.toThrow('gRPC options must be a valid object');
         });
 
@@ -279,13 +292,13 @@ describe('GrpcModule', () => {
                 Test.createTestingModule({
                     imports: [
                         GrpcModule.forRootAsync({
-                            useFactory: () => ({ invalid: 'options' } as any),
+                            useFactory: () => ({ invalid: 'options' }) as any,
                         }),
                     ],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile(),
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile(),
             ).rejects.toThrow('protoPath is required and must be a string');
         });
 
@@ -304,9 +317,9 @@ describe('GrpcModule', () => {
                         }),
                     ],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile(),
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile(),
             ).rejects.toThrow('protoPath is required and must be a string');
         });
     });
@@ -322,16 +335,23 @@ describe('GrpcModule', () => {
             class TestService {}
 
             const featureOptions = {
-                controllers: [TestController],
                 services: [TestService],
+                serviceRegistrations: [
+                    {
+                        serviceName: 'TestService',
+                        package: 'test',
+                        protoPath: './test.proto',
+                        url: 'localhost:50051',
+                    },
+                ],
             };
 
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(baseOptions), GrpcModule.forFeature(featureOptions)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
         });
@@ -345,9 +365,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(baseOptions), GrpcModule.forFeature()],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
         });
@@ -358,19 +378,27 @@ describe('GrpcModule', () => {
                 package: 'test.package',
             };
 
-            class TestController {}
+            class TestService {}
 
             module = await Test.createTestingModule({
                 imports: [
                     GrpcModule.forRoot(baseOptions),
                     GrpcModule.forFeature({
-                        controllers: [TestController],
+                        services: [TestService],
+                        serviceRegistrations: [
+                            {
+                                serviceName: 'TestService',
+                                package: 'test',
+                                protoPath: './test.proto',
+                                url: 'localhost:50051',
+                            },
+                        ],
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
         });
@@ -391,9 +419,9 @@ describe('GrpcModule', () => {
                     }),
                 ],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module).toBeDefined();
         });
@@ -409,9 +437,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             expect(module.get(GrpcClientService)).toBeDefined();
             expect(module.get(ProtoLoaderService)).toBeDefined();
@@ -447,9 +475,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             const grpcOptions = module.get(GRPC_OPTIONS);
             expect(grpcOptions.loaderOptions).toEqual(options.loaderOptions);
@@ -468,9 +496,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             const grpcOptions = module.get(GRPC_OPTIONS);
             expect(grpcOptions.channelOptions).toEqual(options.channelOptions);
@@ -489,9 +517,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             const grpcOptions = module.get(GRPC_OPTIONS);
             expect(grpcOptions.credentials).toEqual(options.credentials);
@@ -511,9 +539,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             const grpcOptions = module.get(GRPC_OPTIONS);
             expect(grpcOptions.logging).toEqual(options.logging);
@@ -534,9 +562,9 @@ describe('GrpcModule', () => {
             module = await Test.createTestingModule({
                 imports: [GrpcModule.forRoot(options)],
             })
-            .overrideProvider(ProtoLoaderService)
-            .useValue(mockProtoLoaderService)
-            .compile();
+                .overrideProvider(ProtoLoaderService)
+                .useValue(mockProtoLoaderService)
+                .compile();
 
             registryService = module.get(GrpcRegistryService);
             discoveryService = module.get(DiscoveryService);
@@ -599,9 +627,9 @@ describe('GrpcModule', () => {
                     imports: [GrpcModule.forRoot(options)],
                     controllers: [TestController, AnotherController, InvalidController],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 registryService = module.get(GrpcRegistryService);
                 await module.init();
@@ -639,15 +667,17 @@ describe('GrpcModule', () => {
                 class DuplicateController {}
 
                 const duplicateModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                     controllers: [TestController, DuplicateController],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const duplicateRegistry = duplicateModule.get(GrpcRegistryService);
                 await duplicateModule.init();
@@ -685,9 +715,9 @@ describe('GrpcModule', () => {
                     imports: [GrpcModule.forRoot(options)],
                     providers: [TestServiceClient, AnotherServiceClient, InvalidServiceClient],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 registryService = module.get(GrpcRegistryService);
                 await module.init();
@@ -715,15 +745,17 @@ describe('GrpcModule', () => {
                 class DuplicateServiceClient {}
 
                 const duplicateModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                     providers: [TestServiceClient, DuplicateServiceClient],
                 })
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const duplicateRegistry = duplicateModule.get(GrpcRegistryService);
                 await duplicateModule.init();
@@ -741,24 +773,28 @@ describe('GrpcModule', () => {
 
                 // Mock discoveryService to return a controller without metadata
                 const mockDiscoveryService = {
-                    getControllers: jest.fn().mockReturnValue([{
-                        metatype: BadController,
-                        name: 'BadController'
-                    }]),
-                    getProviders: jest.fn().mockReturnValue([])
+                    getControllers: jest.fn().mockReturnValue([
+                        {
+                            metatype: BadController,
+                            name: 'BadController',
+                        },
+                    ]),
+                    getProviders: jest.fn().mockReturnValue([]),
                 };
 
                 const testModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                 })
-                .overrideProvider(DiscoveryService)
-                .useValue(mockDiscoveryService)
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(DiscoveryService)
+                    .useValue(mockDiscoveryService)
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const testRegistry = testModule.get(GrpcRegistryService);
                 await testModule.init();
@@ -773,23 +809,27 @@ describe('GrpcModule', () => {
                 // Mock discoveryService to return a service without metadata
                 const mockDiscoveryService = {
                     getControllers: jest.fn().mockReturnValue([]),
-                    getProviders: jest.fn().mockReturnValue([{
-                        metatype: BadService,
-                        name: 'BadService'
-                    }])
+                    getProviders: jest.fn().mockReturnValue([
+                        {
+                            metatype: BadService,
+                            name: 'BadService',
+                        },
+                    ]),
                 };
 
                 const testModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                 })
-                .overrideProvider(DiscoveryService)
-                .useValue(mockDiscoveryService)
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(DiscoveryService)
+                    .useValue(mockDiscoveryService)
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const testRegistry = testModule.get(GrpcRegistryService);
                 await testModule.init();
@@ -807,39 +847,48 @@ describe('GrpcModule', () => {
 
                 // Mock Reflect.getMetadata to throw an error during metadata extraction
                 const originalGetMetadata = Reflect.getMetadata;
-                const mockGetMetadata = jest.fn((metadataKey: any, target: any, propertyKey?: any) => {
-                    if (metadataKey === GRPC_CONTROLLER_METADATA && target === ErrorController) {
-                        throw new Error('Metadata extraction failed');
-                    }
-                    return originalGetMetadata(metadataKey, target, propertyKey);
-                });
+                const mockGetMetadata = jest.fn(
+                    (metadataKey: any, target: any, propertyKey?: any) => {
+                        if (
+                            metadataKey === GRPC_CONTROLLER_METADATA &&
+                            target === ErrorController
+                        ) {
+                            throw new Error('Metadata extraction failed');
+                        }
+                        return originalGetMetadata(metadataKey, target, propertyKey);
+                    },
+                );
                 Reflect.getMetadata = mockGetMetadata;
 
                 const mockDiscoveryService = {
-                    getControllers: jest.fn().mockReturnValue([{
-                        metatype: ErrorController,
-                        name: 'ErrorController'
-                    }]),
-                    getProviders: jest.fn().mockReturnValue([])
+                    getControllers: jest.fn().mockReturnValue([
+                        {
+                            metatype: ErrorController,
+                            name: 'ErrorController',
+                        },
+                    ]),
+                    getProviders: jest.fn().mockReturnValue([]),
                 };
 
                 const testModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                 })
-                .overrideProvider(DiscoveryService)
-                .useValue(mockDiscoveryService)
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(DiscoveryService)
+                    .useValue(mockDiscoveryService)
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const testRegistry = testModule.get(GrpcRegistryService);
                 await testModule.init();
 
                 expect(testRegistry.getControllers().size).toBe(0);
-                
+
                 // Restore original function
                 Reflect.getMetadata = originalGetMetadata;
                 await testModule.close();
@@ -864,29 +913,33 @@ describe('GrpcModule', () => {
 
                 const mockDiscoveryService = {
                     getControllers: jest.fn().mockReturnValue([]),
-                    getProviders: jest.fn().mockReturnValue([{
-                        metatype: NullService,
-                        name: 'NullService'
-                    }])
+                    getProviders: jest.fn().mockReturnValue([
+                        {
+                            metatype: NullService,
+                            name: 'NullService',
+                        },
+                    ]),
                 };
 
                 const testModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                 })
-                .overrideProvider(DiscoveryService)
-                .useValue(mockDiscoveryService)
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(DiscoveryService)
+                    .useValue(mockDiscoveryService)
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const testRegistry = testModule.get(GrpcRegistryService);
                 await testModule.init();
 
                 expect(testRegistry.getServiceClients().size).toBe(0);
-                
+
                 // Restore original function
                 Reflect.getMetadata = originalGetMetadata;
                 await testModule.close();
@@ -911,29 +964,33 @@ describe('GrpcModule', () => {
 
                 const mockDiscoveryService = {
                     getControllers: jest.fn().mockReturnValue([]),
-                    getProviders: jest.fn().mockReturnValue([{
-                        metatype: ErrorService,
-                        name: 'ErrorService'
-                    }])
+                    getProviders: jest.fn().mockReturnValue([
+                        {
+                            metatype: ErrorService,
+                            name: 'ErrorService',
+                        },
+                    ]),
                 };
 
                 const testModule = await Test.createTestingModule({
-                    imports: [GrpcModule.forRoot({
-                        protoPath: '/test/path.proto',
-                        package: 'test.package',
-                    })],
+                    imports: [
+                        GrpcModule.forRoot({
+                            protoPath: '/test/path.proto',
+                            package: 'test.package',
+                        }),
+                    ],
                 })
-                .overrideProvider(DiscoveryService)
-                .useValue(mockDiscoveryService)
-                .overrideProvider(ProtoLoaderService)
-                .useValue(mockProtoLoaderService)
-                .compile();
+                    .overrideProvider(DiscoveryService)
+                    .useValue(mockDiscoveryService)
+                    .overrideProvider(ProtoLoaderService)
+                    .useValue(mockProtoLoaderService)
+                    .compile();
 
                 const testRegistry = testModule.get(GrpcRegistryService);
                 await testModule.init();
 
                 expect(testRegistry.getServiceClients().size).toBe(0);
-                
+
                 // Restore original function
                 Reflect.getMetadata = originalGetMetadata;
                 await testModule.close();
@@ -958,10 +1015,7 @@ describe('GrpcRegistryService - Standalone', () => {
             logging: { level: 'debug' as const },
         };
 
-        registryService = new GrpcRegistryService(
-            discoveryService,
-            options
-        );
+        registryService = new GrpcRegistryService(discoveryService, options);
     });
 
     describe('controller metadata extraction', () => {
@@ -970,15 +1024,24 @@ describe('GrpcRegistryService - Standalone', () => {
                 testMethod() {}
             }
 
-            Reflect.defineMetadata(GRPC_CONTROLLER_METADATA, {
-                serviceName: 'TestService',
-                package: 'test',
-                url: 'localhost:5000'
-            }, TestController);
+            Reflect.defineMetadata(
+                GRPC_CONTROLLER_METADATA,
+                {
+                    serviceName: 'TestService',
+                    package: 'test',
+                    url: 'localhost:5000',
+                },
+                TestController,
+            );
 
-            Reflect.defineMetadata(GRPC_METHOD_METADATA, {
-                name: 'TestMethod'
-            }, TestController.prototype, 'testMethod');
+            Reflect.defineMetadata(
+                GRPC_METHOD_METADATA,
+                {
+                    name: 'TestMethod',
+                },
+                TestController.prototype,
+                'testMethod',
+            );
 
             const metadata = (registryService as any).extractControllerMetadata(TestController);
 
@@ -1000,10 +1063,14 @@ describe('GrpcRegistryService - Standalone', () => {
         it('should handle controller with no methods', () => {
             class TestController {}
 
-            Reflect.defineMetadata(GRPC_CONTROLLER_METADATA, {
-                serviceName: 'TestService',
-                package: 'test'
-            }, TestController);
+            Reflect.defineMetadata(
+                GRPC_CONTROLLER_METADATA,
+                {
+                    serviceName: 'TestService',
+                    package: 'test',
+                },
+                TestController,
+            );
 
             const metadata = (registryService as any).extractControllerMetadata(TestController);
 
@@ -1018,14 +1085,23 @@ describe('GrpcRegistryService - Standalone', () => {
                 constructor() {}
             }
 
-            Reflect.defineMetadata(GRPC_CONTROLLER_METADATA, {
-                serviceName: 'TestService',
-                package: 'test'
-            }, TestController);
+            Reflect.defineMetadata(
+                GRPC_CONTROLLER_METADATA,
+                {
+                    serviceName: 'TestService',
+                    package: 'test',
+                },
+                TestController,
+            );
 
-            Reflect.defineMetadata(GRPC_METHOD_METADATA, {
-                name: 'GrpcMethod'
-            }, TestController.prototype, 'grpcMethod');
+            Reflect.defineMetadata(
+                GRPC_METHOD_METADATA,
+                {
+                    name: 'GrpcMethod',
+                },
+                TestController.prototype,
+                'grpcMethod',
+            );
 
             const metadata = (registryService as any).extractControllerMetadata(TestController);
 
@@ -1061,50 +1137,66 @@ describe('Validation Functions', () => {
     });
 
     it('should throw for missing protoPath', () => {
-        expect(() => validateGrpcOptions({ package: 'test' })).toThrow('protoPath is required and must be a string');
+        expect(() => validateGrpcOptions({ package: 'test' })).toThrow(
+            'protoPath is required and must be a string',
+        );
     });
 
     it('should throw for non-string protoPath', () => {
-        expect(() => validateGrpcOptions({ protoPath: 123, package: 'test' })).toThrow('protoPath is required and must be a string');
+        expect(() => validateGrpcOptions({ protoPath: 123, package: 'test' })).toThrow(
+            'protoPath is required and must be a string',
+        );
     });
 
     it('should throw for missing package', () => {
-        expect(() => validateGrpcOptions({ protoPath: 'test.proto' })).toThrow('package is required and must be a string');
+        expect(() => validateGrpcOptions({ protoPath: 'test.proto' })).toThrow(
+            'package is required and must be a string',
+        );
     });
 
     it('should throw for non-string package', () => {
-        expect(() => validateGrpcOptions({ protoPath: 'test.proto', package: 123 })).toThrow('package is required and must be a string');
+        expect(() => validateGrpcOptions({ protoPath: 'test.proto', package: 123 })).toThrow(
+            'package is required and must be a string',
+        );
     });
 
     it('should throw for non-string url', () => {
-        expect(() => validateGrpcOptions({
-            protoPath: 'test.proto',
-            package: 'test',
-            url: 123
-        })).toThrow('url must be a string');
+        expect(() =>
+            validateGrpcOptions({
+                protoPath: 'test.proto',
+                package: 'test',
+                url: 123,
+            }),
+        ).toThrow('url must be a string');
     });
 
     it('should accept valid url', () => {
-        expect(() => validateGrpcOptions({
-            protoPath: 'test.proto',
-            package: 'test',
-            url: 'localhost:5000'
-        })).not.toThrow();
+        expect(() =>
+            validateGrpcOptions({
+                protoPath: 'test.proto',
+                package: 'test',
+                url: 'localhost:5000',
+            }),
+        ).not.toThrow();
     });
 
     it('should accept valid maxSendMessageSize', () => {
-        expect(() => validateGrpcOptions({
-            protoPath: 'test.proto',
-            package: 'test',
-            maxSendMessageSize: 1024
-        })).not.toThrow();
+        expect(() =>
+            validateGrpcOptions({
+                protoPath: 'test.proto',
+                package: 'test',
+                maxSendMessageSize: 1024,
+            }),
+        ).not.toThrow();
     });
 
     it('should accept valid maxReceiveMessageSize', () => {
-        expect(() => validateGrpcOptions({
-            protoPath: 'test.proto',
-            package: 'test',
-            maxReceiveMessageSize: 2048
-        })).not.toThrow();
+        expect(() =>
+            validateGrpcOptions({
+                protoPath: 'test.proto',
+                package: 'test',
+                maxReceiveMessageSize: 2048,
+            }),
+        ).not.toThrow();
     });
 });
