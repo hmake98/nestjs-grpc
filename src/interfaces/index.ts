@@ -271,11 +271,6 @@ export interface GrpcModuleAsyncOptions extends Pick<ModuleMetadata, 'imports' |
  */
 export interface GrpcFeatureOptions {
     /**
-     * gRPC controllers to register (classes decorated with @GrpcController)
-     */
-    controllers?: Type<any>[];
-
-    /**
      * gRPC service clients to register (classes decorated with @GrpcService)
      */
     services?: Type<any>[];
@@ -294,6 +289,89 @@ export interface GrpcFeatureOptions {
      * Additional exports from this feature module
      */
     exports?: Array<Type<any> | string | symbol>;
+
+    /**
+     * External gRPC services to register for client injection
+     * This allows you to register external services that this module will call
+     */
+    serviceRegistrations?: GrpcServiceRegistrationConfig[];
+}
+
+/**
+ * Configuration for the local gRPC service in a feature module
+ */
+export interface GrpcLocalServiceConfig {
+    /**
+     * Path to the proto file for this service
+     */
+    protoPath: string;
+
+    /**
+     * Package name as defined in the proto file
+     */
+    package: string;
+
+    /**
+     * Service URL/endpoint for this local service
+     */
+    url?: string;
+
+    /**
+     * Logging configuration for this service
+     */
+    logging?: GrpcLoggingOptions;
+
+    /**
+     * Additional local service options
+     */
+    options?: {
+        secure?: boolean;
+        rootCerts?: Buffer;
+        privateKey?: Buffer;
+        certChain?: Buffer;
+        maxSendMessageSize?: number;
+        maxReceiveMessageSize?: number;
+    };
+}
+
+/**
+ * Configuration for registering external gRPC services in feature modules
+ */
+export interface GrpcServiceRegistrationConfig {
+    /**
+     * Service name as defined in the proto file
+     */
+    serviceName: string;
+
+    /**
+     * Package name as defined in the proto file
+     */
+    package: string;
+
+    /**
+     * Path to the proto file
+     */
+    protoPath: string;
+
+    /**
+     * Service URL/endpoint
+     */
+    url: string;
+
+    /**
+     * Service-specific client options
+     */
+    options?: {
+        secure?: boolean;
+        rootCerts?: Buffer;
+        privateKey?: Buffer;
+        certChain?: Buffer;
+        maxSendMessageSize?: number;
+        maxReceiveMessageSize?: number;
+        timeout?: number;
+        maxRetries?: number;
+        retryDelay?: number;
+    };
 }
 
 /**
@@ -572,4 +650,29 @@ export interface HttpToGrpcStatusMapping {
      * Optional description of the mapping
      */
     description?: string;
+}
+
+/**
+ * Async options for gRPC feature modules
+ */
+export interface GrpcFeatureAsyncOptions extends Pick<ModuleMetadata, 'imports' | 'providers'> {
+    /**
+     * Factory function to create gRPC feature options
+     */
+    useFactory?: (...args: any[]) => Promise<GrpcFeatureOptions> | GrpcFeatureOptions;
+
+    /**
+     * Class that implements a factory for GrpcFeatureOptions
+     */
+    useClass?: Type<any>;
+
+    /**
+     * Existing provider that implements a factory for GrpcFeatureOptions
+     */
+    useExisting?: Type<any>;
+
+    /**
+     * Dependencies to inject into the factory function
+     */
+    inject?: any[];
 }

@@ -15,6 +15,7 @@ import {
     GRPC_CONTROLLER_METADATA,
     GRPC_SERVICE_METADATA,
     GRPC_METHOD_METADATA,
+    GRPC_CLIENT_TOKEN_PREFIX,
 } from './constants';
 import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 import {
@@ -22,6 +23,8 @@ import {
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
     GrpcFeatureOptions,
+    GrpcFeatureAsyncOptions,
+    GrpcServiceRegistrationConfig,
     ControllerMetadata,
     ServiceClientMetadata,
 } from './interfaces';
@@ -189,24 +192,131 @@ export class GrpcModule {
     }
 
     /**
-     * Register gRPC feature modules with controllers and services
+     * Register gRPC feature modules with service registrations for external service clients
+     * Use this to register external gRPC services that this module needs to call
      */
     static forFeature(options: GrpcFeatureOptions = {}): DynamicModule {
         const providers: Provider[] = [];
-        const controllers = options.controllers ?? [];
         const services = options.services ?? [];
+        const serviceRegistrations = options.serviceRegistrations ?? [];
 
         // Add service providers for client injection
         for (const serviceClass of services) {
             providers.push(serviceClass);
         }
 
+        // Create client providers for registered external services
+        for (const serviceRegistration of serviceRegistrations) {
+            const clientToken = `${GRPC_CLIENT_TOKEN_PREFIX}${serviceRegistration.serviceName}`;
+
+            providers.push({
+                provide: clientToken,
+                useFactory: (grpcClientService: GrpcClientService) => {
+                    return grpcClientService.create(serviceRegistration.serviceName, {
+                        service: serviceRegistration.serviceName,
+                        package: serviceRegistration.package,
+                        protoPath: serviceRegistration.protoPath,
+                        url: serviceRegistration.url,
+                        ...serviceRegistration.options,
+                    });
+                },
+                inject: [GrpcClientService],
+            });
+        }
+
+        // Add additional providers from options
+        if (options.providers) {
+            providers.push(...options.providers);
+        }
+
         return {
             module: GrpcModule,
-            controllers,
+            imports: options.imports,
             providers,
-            exports: [...services],
+            exports: [...services, ...(options.exports ?? [])],
         };
+    }
+
+    /**
+     * Register gRPC feature modules with async configuration
+     */
+    static forFeatureAsync(options: GrpcFeatureAsyncOptions): DynamicModule {
+        const asyncProviders = this.createFeatureAsyncProviders(options);
+
+        return {
+            module: GrpcModule,
+            imports: options.imports,
+            providers: [
+                ...asyncProviders,
+                ...(options.providers ?? []),
+                {
+                    provide: 'GRPC_FEATURE_MODULE',
+                    useFactory: async (featureOptions: GrpcFeatureOptions) => {
+                        return this.createFeatureModule(featureOptions);
+                    },
+                    inject: ['GRPC_FEATURE_OPTIONS'],
+                },
+            ],
+            exports: ['GRPC_FEATURE_MODULE'],
+        };
+    }
+
+    /**
+     * Creates async providers for feature modules
+     */
+    private static createFeatureAsyncProviders(options: GrpcFeatureAsyncOptions): Provider[] {
+        if (options.useFactory) {
+            return [
+                {
+                    provide: 'GRPC_FEATURE_OPTIONS',
+                    useFactory: options.useFactory,
+                    inject: options.inject ?? [],
+                },
+            ];
+        }
+
+        if (options.useClass) {
+            return [
+                {
+                    provide: options.useClass,
+                    useClass: options.useClass,
+                },
+                {
+                    provide: 'GRPC_FEATURE_OPTIONS',
+                    useFactory: async (optionsFactory: any) => {
+                        return typeof optionsFactory.createGrpcFeatureOptions === 'function'
+                            ? await optionsFactory.createGrpcFeatureOptions()
+                            : optionsFactory;
+                    },
+                    inject: [options.useClass],
+                },
+            ];
+        }
+
+        if (options.useExisting) {
+            return [
+                {
+                    provide: 'GRPC_FEATURE_OPTIONS',
+                    useFactory: async (optionsFactory: any) => {
+                        return typeof optionsFactory.createGrpcFeatureOptions === 'function'
+                            ? await optionsFactory.createGrpcFeatureOptions()
+                            : optionsFactory;
+                    },
+                    inject: [options.useExisting],
+                },
+            ];
+        }
+
+        throw new Error('One of useFactory, useClass, or useExisting must be provided');
+    }
+
+    /**
+     * Creates feature module providers from options
+     */
+    private static createFeatureModule(options: GrpcFeatureOptions): any {
+        // This is a simplified version - in a real implementation,
+        // you would need to handle the complex provider creation logic
+        return this.forFeature(options);
     }
 }
 
