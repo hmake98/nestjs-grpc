@@ -394,9 +394,9 @@ GrpcModule.forRoot({
 });
 ```
 
-### Feature Modules
+### Feature Modules and Service Registration
 
-Feature modules allow you to organize your gRPC services and provide better modularity.
+Feature modules allow you to register external gRPC services that your module needs to call. Use `GrpcModule.forRoot()` to register controllers (service providers) and `GrpcModule.forFeature()` to register service clients (service consumers).
 
 #### Basic Feature Module
 
@@ -418,29 +418,408 @@ import { UserService } from './user.service';
 export class UserModule {}
 ```
 
-#### Advanced Feature Module with Dependencies
+#### Auth Service (Service Provider)
 
 ```typescript
+// auth.module.ts - Service that provides gRPC controllers
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { GrpcModule } from 'nestjs-grpc';
-import { OrderController } from './order.controller';
-import { OrderService } from './order.service';
-import { OrderEntity } from './order.entity';
-import { PaymentClientService } from './payment-client.service';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { join } from 'path';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([OrderEntity]),
-        GrpcModule.forFeature({
-            controllers: [OrderController],
-            services: [PaymentClientService],
+        // Register this service's own gRPC server with controllers
+        GrpcModule.forRoot({
+            protoPath: join(__dirname, '../protos/auth.proto'),
+            package: 'auth',
+            url: '0.0.0.0:50051',
+            logging: {
+                enabled: true,
+                level: process.env.NODE_ENV === 'development' ? 'debug' : 'log',
+                context: 'AuthService',
+                logErrors: true,
+                logPerformance: process.env.NODE_ENV === 'development',
+                logDetails: process.env.NODE_ENV === 'development',
+            },
         }),
     ],
-    providers: [OrderService],
-    exports: [OrderService],
+    controllers: [AuthController], // gRPC controllers go here
+    providers: [AuthService],
+    exports: [AuthService],
 })
-export class OrderModule {}
+export class AuthModule {}
+
+// auth.controller.ts - Handles incoming gRPC requests
+@GrpcController('AuthService')
+export class AuthController {
+    constructor(private readonly authService: AuthService) {}
+
+    @GrpcMethod('ValidateToken')
+    async validateToken(request: ValidateTokenRequest): Promise<ValidateTokenResponse> {
+        const isValid = await this.authService.validateToken(request.token);
+        const user = isValid ? await this.authService.getUserFromToken(request.token) : null;
+
+        return {
+            valid: isValid,
+            user,
+        };
+    }
+}
+```
+
+#### Post Service (Service Consumer)
+
+```typescript
+// post.module.ts - Service that consumes other gRPC services
+import { Module } from '@nestjs/common';
+import { GrpcModule } from 'nestjs-grpc';
+import { PostController } from './post.controller';
+import { PostService } from './post.service';
+import { GrpcAuthService } from './grpc-auth.service';
+import { join } from 'path';
+
+@Module({
+    imports: [
+        // Register this service's own gRPC server
+        GrpcModule.forRoot({
+            protoPath: join(__dirname, '../protos/post.proto'),
+            package: 'post',
+            url: '0.0.0.0:50052',
+            logging: {
+                enabled: true,
+                level: process.env.NODE_ENV === 'development' ? 'debug' : 'log',
+                context: 'PostService',
+                logErrors: true,
+                logPerformance: process.env.NODE_ENV === 'development',
+                logDetails: process.env.NODE_ENV === 'development',
+            },
+        }),
+
+        // Register external services this module needs to call
+        GrpcModule.forFeature({
+            serviceRegistrations: [
+                {
+                    serviceName: 'AuthService',
+                    package: 'auth',
+                    protoPath: join(__dirname, '../protos/auth.proto'), // Same proto file!
+                    url: process.env.AUTH_SERVICE_URL || 'auth-service:50051',
+                    options: {
+                        timeout: 10000,
+                        maxRetries: 3,
+                        retryDelay: 1000,
+                    },
+                },
+                {
+                    serviceName: 'UserService',
+                    package: 'user',
+                    protoPath: join(__dirname, '../protos/user.proto'),
+                    url: process.env.USER_SERVICE_URL || 'user-service:50051',
+                },
+            ],
+
+            // Custom service providers that use the registered services
+            services: [GrpcAuthService],
+        }),
+    ],
+    controllers: [PostController], // This service's own controllers
+    providers: [PostService, GrpcAuthService],
+    exports: [PostService, GrpcAuthService],
+})
+export class PostModule {}
+
+// grpc-auth.service.ts - Uses the registered AuthService
+@Injectable()
+export class GrpcAuthService {
+    constructor(@InjectGrpcClient('AuthService') private readonly authClient: any) {}
+
+    async validateToken(token: string): Promise<boolean> {
+        try {
+            const result = await this.authClient.validateToken({ token });
+            return result.valid;
+        } catch (error) {
+            console.error('Token validation failed:', error);
+            return false;
+        }
+    }
+}
+
+// post.controller.ts - This service's gRPC controller
+@GrpcController('PostService')
+export class PostController {
+    constructor(
+        private readonly postService: PostService,
+        private readonly grpcAuthService: GrpcAuthService,
+    ) {}
+
+    @GrpcMethod('CreatePost')
+    async createPost(request: CreatePostRequest): Promise<CreatePostResponse> {
+        // Validate token using the registered AuthService
+        const isValid = await this.grpcAuthService.validateToken(request.token);
+
+        if (!isValid) {
+            throw GrpcException.unauthenticated('Invalid token');
+        }
+
+        const post = await this.postService.create(request);
+        return { post };
+    }
+}
+```
+
+#### Production Configuration Example
+
+```typescript
+// post.module.ts
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { GrpcModule } from 'nestjs-grpc';
+import { PostController } from './post.controller';
+import { PostService } from './post.service';
+import { join } from 'path';
+
+@Module({
+    imports: [
+        ConfigModule,
+        GrpcModule.forFeature({
+            // Configure this service's own gRPC server
+            localService: {
+                protoPath: join(__dirname, '../protos/post.proto'),
+                package: 'post',
+                url: process.env.GRPC_URL || '0.0.0.0:50052',
+                logging: {
+                    enabled: true,
+                    level: process.env.NODE_ENV === 'development' ? 'debug' : 'log',
+                    context: 'PostService',
+                    logErrors: true,
+                    logPerformance: process.env.NODE_ENV === 'development',
+                    logDetails: process.env.NODE_ENV === 'development',
+                },
+            },
+
+            controllers: [PostController],
+
+            // External services this module calls
+            externalServices: [
+                {
+                    serviceName: 'AuthService',
+                    package: 'auth',
+                    protoPath: './protos/auth.proto',
+                    url: process.env.AUTH_SERVICE_URL || 'auth-service:50051',
+                },
+                {
+                    serviceName: 'UserService',
+                    package: 'user',
+                    protoPath: './protos/user.proto',
+                    url: process.env.USER_SERVICE_URL || 'user-service:50051',
+                },
+            ],
+
+            providers: [PostService],
+        }),
+    ],
+    providers: [PostService],
+    exports: [PostService],
+})
+export class PostModule {}
+```
+
+#### Complete Microservices Example
+
+```typescript
+// app.module.ts - Main application module
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { GrpcModule } from 'nestjs-grpc';
+
+@Module({
+    imports: [
+        ConfigModule.forRoot({ isGlobal: true }),
+
+        // Configure the main gRPC module (this service's own proto)
+        GrpcModule.forRoot({
+            protoPath: './protos/post.proto',
+            package: 'post',
+            url: 'localhost:50051',
+        }),
+
+        PostModule,
+        UserModule,
+    ],
+})
+export class AppModule {}
+
+// post.module.ts - Feature module with external service dependencies
+@Module({
+    imports: [
+        TypeOrmModule.forFeature([PostEntity]),
+        GrpcModule.forFeature({
+            controllers: [PostController], // Handles PostService gRPC calls
+
+            externalServices: [
+                // Register external services this module depends on
+                {
+                    serviceName: 'AuthService',
+                    package: 'auth',
+                    protoPath: './protos/auth.proto',
+                    url: process.env.AUTH_SERVICE_URL || 'auth-service:50051',
+                },
+                {
+                    serviceName: 'UserService',
+                    package: 'user',
+                    protoPath: './protos/user.proto',
+                    url: process.env.USER_SERVICE_URL || 'user-service:50051',
+                },
+                {
+                    serviceName: 'NotificationService',
+                    package: 'notification',
+                    protoPath: './protos/notification.proto',
+                    url: process.env.NOTIFICATION_SERVICE_URL || 'notification-service:50051',
+                    options: {
+                        secure: true,
+                        timeout: 5000,
+                        maxRetries: 2,
+                    },
+                },
+            ],
+
+            services: [PostClientService], // Custom client service
+        }),
+    ],
+    providers: [PostService],
+    exports: [PostService],
+})
+export class PostModule {}
+
+// post.controller.ts - gRPC Controller (handles incoming requests)
+@GrpcController('PostService')
+export class PostController {
+    constructor(
+        private readonly postService: PostService,
+        @InjectGrpcClient('AuthService') private readonly authClient: any,
+        @InjectGrpcClient('UserService') private readonly userClient: any,
+        @InjectGrpcClient('NotificationService') private readonly notificationClient: any,
+    ) {}
+
+    @GrpcMethod('CreatePost')
+    async createPost(request: CreatePostRequest): Promise<CreatePostResponse> {
+        // Validate token with auth service
+        const authResult = await this.authClient.validateToken({
+            token: request.token,
+        });
+
+        if (!authResult.valid) {
+            throw GrpcException.unauthenticated('Invalid token');
+        }
+
+        // Get user details
+        const user = await this.userClient.getUserById({
+            id: authResult.userId,
+        });
+
+        // Create the post
+        const post = await this.postService.create({
+            title: request.title,
+            content: request.content,
+            authorId: user.id,
+        });
+
+        // Send notification (fire and forget)
+        this.notificationClient
+            .sendNotification({
+                userId: user.id,
+                type: 'POST_CREATED',
+                message: `Your post "${post.title}" has been created`,
+            })
+            .catch(error => {
+                console.error('Failed to send notification:', error);
+            });
+
+        return { post };
+    }
+
+    @GrpcMethod('GetPost')
+    async getPost(request: GetPostRequest): Promise<GetPostResponse> {
+        const post = await this.postService.findById(request.id);
+
+        if (!post) {
+            throw GrpcException.notFound('Post not found');
+        }
+
+        // Get author details from user service
+        const author = await this.userClient.getUserById({
+            id: post.authorId,
+        });
+
+        return {
+            post: {
+                ...post,
+                author,
+            },
+        };
+    }
+}
+
+// grpc-auth.service.ts - Custom client service wrapper
+@Injectable()
+export class GrpcAuthService {
+    constructor(@InjectGrpcClient('AuthService') private readonly authClient: any) {}
+
+    async validateToken(token: string): Promise<boolean> {
+        try {
+            const result = await this.authClient.validateToken({ token });
+            return result.valid;
+        } catch (error) {
+            console.error('Token validation failed:', error);
+            return false;
+        }
+    }
+
+    async getUserFromToken(token: string): Promise<any> {
+        const result = await this.authClient.validateToken({ token });
+        return result.valid ? result.user : null;
+    }
+}
+```
+
+#### Environment-Based Service Configuration
+
+```typescript
+// config/grpc.config.ts
+export const grpcConfig = () => ({
+    externalServices: [
+        {
+            serviceName: 'AuthService',
+            package: 'auth',
+            protoPath: './protos/auth.proto',
+            url: process.env.AUTH_SERVICE_URL || 'auth-service:50051',
+            options: {
+                secure: process.env.AUTH_SERVICE_SECURE === 'true',
+                timeout: parseInt(process.env.AUTH_SERVICE_TIMEOUT || '10000'),
+                maxRetries: parseInt(process.env.AUTH_SERVICE_MAX_RETRIES || '3'),
+            },
+        },
+        {
+            serviceName: 'UserService',
+            package: 'user',
+            protoPath: './protos/user.proto',
+            url: process.env.USER_SERVICE_URL || 'user-service:50051',
+        },
+    ],
+});
+
+// feature.module.ts
+@Module({
+    imports: [
+        ConfigModule.forFeature(grpcConfig),
+        GrpcModule.forFeature({
+            controllers: [FeatureController],
+            externalServices: grpcConfig().externalServices,
+        }),
+    ],
+})
+export class FeatureModule {}
 ```
 
 ## 🔄 Streaming Examples
@@ -1297,6 +1676,105 @@ GrpcModule.forRoot({
     },
 });
 ```
+
+## 🔧 Fixing Common Issues
+
+### Service Registration Error Fix
+
+If you encounter the error `Nest can't resolve dependencies of the GrpcAuthService (ConfigService, ?). Please make sure that the argument "GRPC_CLIENT_AuthService" at index [1] is available`, here's how to fix it using the new service registration pattern:
+
+#### Before (Problematic)
+
+```typescript
+// This will cause injection errors
+@Module({
+    providers: [GrpcAuthService],
+    exports: [GrpcAuthService],
+})
+export class GrpcAuthModule {}
+```
+
+#### After (Fixed)
+
+```typescript
+import { join } from 'path';
+
+@Module({
+    imports: [
+        // Use forFeature to register external services this module calls
+        GrpcModule.forFeature({
+            serviceRegistrations: [
+                {
+                    serviceName: 'AuthService',
+                    package: 'auth',
+                    protoPath: join(__dirname, '../protos/auth.proto'),
+                    url: process.env.AUTH_SERVICE_URL || 'auth-service:50051',
+                    options: {
+                        timeout: 10000,
+                        maxRetries: 3,
+                    },
+                },
+            ],
+
+            // Register your custom service that uses the AuthService client
+            services: [GrpcAuthService],
+        }),
+    ],
+    providers: [GrpcAuthService],
+    exports: [GrpcAuthService],
+})
+export class GrpcAuthModule {}
+```
+
+The key difference is that `externalServices` automatically creates the `GRPC_CLIENT_AuthService` provider that can be injected with `@InjectGrpcClient('AuthService')`.
+
+### Service Discovery Pattern
+
+The enhanced `forFeature()` method enables a clean service discovery pattern:
+
+```typescript
+// Each microservice module registers its external dependencies
+@Module({
+    imports: [
+        GrpcModule.forFeature({
+            controllers: [PostController], // This service's controllers
+
+            externalServices: [
+                // Services this module depends on
+                {
+                    serviceName: 'AuthService',
+                    package: 'auth',
+                    protoPath: './protos/auth.proto',
+                    url: 'auth:50051',
+                },
+                {
+                    serviceName: 'UserService',
+                    package: 'user',
+                    protoPath: './protos/user.proto',
+                    url: 'user:50051',
+                },
+                {
+                    serviceName: 'NotificationService',
+                    package: 'notification',
+                    protoPath: './protos/notification.proto',
+                    url: 'notification:50051',
+                },
+            ],
+
+            services: [PostClientService], // Custom client services
+        }),
+    ],
+})
+export class PostModule {}
+```
+
+This pattern provides:
+
+- ✅ **Automatic client injection** - No manual provider setup needed
+- ✅ **Clear service dependencies** - External services are explicitly declared
+- ✅ **Environment configuration** - URLs and options can be configured per environment
+- ✅ **Type safety** - Full TypeScript support with generated types
+- ✅ **Modular organization** - Each feature module manages its own dependencies
 
 ## 🤝 Contributing
 
