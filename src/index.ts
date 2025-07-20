@@ -11,7 +11,6 @@ export { GrpcController, GrpcMethod } from './decorators';
 
 // Exceptions
 export { GrpcException } from './exceptions/grpc.exception';
-export { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 
 // Interfaces
 export type {
@@ -24,7 +23,6 @@ export type {
     GrpcControllerOptions,
     GrpcServiceOptions,
     GrpcExceptionOptions,
-    GrpcExceptionFilterOptions,
     GrpcLoggingOptions,
     GenerateCommandOptions,
     ControllerMetadata,

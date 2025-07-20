@@ -1,11 +1,10 @@
 import 'reflect-metadata';
 
 import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
-import { APP_FILTER, DiscoveryModule } from '@nestjs/core';
+import { DiscoveryModule } from '@nestjs/core';
 
 import { GRPC_OPTIONS } from './constants';
 import { GrpcConsumerErrorHandler } from './exceptions/grpc.exception';
-import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 import {
     GrpcOptions,
     GrpcModuleAsyncOptions,
@@ -48,10 +47,6 @@ export class GrpcModule {
             GrpcProviderService,
             GrpcRegistryService,
             GrpcControllerDiscoveryService,
-            {
-                provide: APP_FILTER,
-                useFactory: () => new GrpcExceptionFilter(),
-            },
         ];
 
         return {
@@ -86,10 +81,6 @@ export class GrpcModule {
             GrpcProviderService,
             GrpcRegistryService,
             GrpcControllerDiscoveryService,
-            {
-                provide: APP_FILTER,
-                useFactory: () => new GrpcExceptionFilter(),
-            },
         ];
 
         return {
