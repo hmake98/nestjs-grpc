@@ -23,7 +23,7 @@
 - 🔒 **Security** - Built-in TLS support and flexible authentication options
 - 📊 **Advanced Logging** - Configurable logging with multiple levels and performance metrics
 - 🔌 **Complete DI Support** - Inject any NestJS service into gRPC controllers and clients
-- 🔍 **Error Handling** - Comprehensive gRPC exception handling with proper status codes
+- 🔍 **Error Handling** - gRPC exception classes with proper status codes and custom filter support
 - 🔁 **Retry Logic** - Built-in retry mechanisms with exponential backoff
 - 📡 **Client Management** - Automatic connection pooling with cleanup and caching
 
@@ -247,7 +247,7 @@ export class GrpcAuthService {
             const result = await this.grpcClient.call<ValidateTokenRequest, ValidateTokenResponse>(
                 'AuthService',
                 'ValidateToken',
-                { token }
+                { token },
             );
             return result.valid;
         } catch (error) {
@@ -369,14 +369,14 @@ npx nestjs-grpc generate --package-filter "auth"
 
 #### CLI Options
 
-| Option                   | Description                                    | Default                 |
-| ------------------------ | ---------------------------------------------- | ----------------------- |
-| `-p, --proto`            | Path to proto file, directory, or glob pattern | `"./protos/**/*.proto"` |
-| `-o, --output`           | Output directory for generated files           | `"./src/generated"`     |
-| `-c, --classes`          | Generate classes instead of interfaces         | `false`                 |
-| `--no-comments`          | Disable comments in generated files            | `false`                 |
-| `-f, --package-filter`   | Filter by package name                         | -                       |
-| `-v, --verbose`          | Enable verbose logging                         | `false`                 |
+| Option                 | Description                                    | Default                 |
+| ---------------------- | ---------------------------------------------- | ----------------------- |
+| `-p, --proto`          | Path to proto file, directory, or glob pattern | `"./protos/**/*.proto"` |
+| `-o, --output`         | Output directory for generated files           | `"./src/generated"`     |
+| `-c, --classes`        | Generate classes instead of interfaces         | `false`                 |
+| `--no-comments`        | Disable comments in generated files            | `false`                 |
+| `-f, --package-filter` | Filter by package name                         | -                       |
+| `-v, --verbose`        | Enable verbose logging                         | `false`                 |
 
 ### Decorators
 
@@ -487,6 +487,8 @@ bidirectionalStream(requests: Observable<RequestType>): Observable<ResponseType>
 
 ## 🛡️ Error Handling
 
+> **Note**: This package no longer automatically registers a global exception filter. Your application's own exception filters will handle errors without interference. Use `GrpcException` for throwing gRPC-specific exceptions.
+
 ### Using GrpcException
 
 ```typescript
@@ -539,23 +541,80 @@ export class UserController {
 
 ```typescript
 // Standard gRPC status codes
-GrpcException.ok()                    // 0
-GrpcException.cancelled()             // 1  
-GrpcException.unknown()               // 2
-GrpcException.invalidArgument()       // 3
-GrpcException.deadlineExceeded()      // 4
-GrpcException.notFound()              // 5
-GrpcException.alreadyExists()         // 6
-GrpcException.permissionDenied()      // 7
-GrpcException.resourceExhausted()     // 8
-GrpcException.failedPrecondition()    // 9
-GrpcException.aborted()               // 10
-GrpcException.outOfRange()            // 11
-GrpcException.unimplemented()         // 12
-GrpcException.internal()              // 13
-GrpcException.unavailable()           // 14
-GrpcException.dataLoss()              // 15
-GrpcException.unauthenticated()       // 16
+GrpcException.ok(); // 0
+GrpcException.cancelled(); // 1
+GrpcException.unknown(); // 2
+GrpcException.invalidArgument(); // 3
+GrpcException.deadlineExceeded(); // 4
+GrpcException.notFound(); // 5
+GrpcException.alreadyExists(); // 6
+GrpcException.permissionDenied(); // 7
+GrpcException.resourceExhausted(); // 8
+GrpcException.failedPrecondition(); // 9
+GrpcException.aborted(); // 10
+GrpcException.outOfRange(); // 11
+GrpcException.unimplemented(); // 12
+GrpcException.internal(); // 13
+GrpcException.unavailable(); // 14
+GrpcException.dataLoss(); // 15
+GrpcException.unauthenticated(); // 16
+```
+
+### Custom Exception Filters
+
+Since this package no longer registers a global exception filter, you can use your own exception filters to handle errors:
+
+```typescript
+import { ArgumentsHost, Catch, RpcExceptionFilter } from '@nestjs/common';
+import { Observable, throwError } from 'rxjs';
+import { GrpcException } from 'nestjs-grpc';
+
+@Catch()
+export class CustomGrpcExceptionFilter implements RpcExceptionFilter<any> {
+    catch(exception: any, host: ArgumentsHost): Observable<any> {
+        // Handle GrpcException instances
+        if (exception instanceof GrpcException) {
+            return throwError(() => ({
+                code: exception.getCode(),
+                message: exception.message,
+                details: exception.getDetails(),
+            }));
+        }
+
+        // Handle other exceptions
+        return throwError(() => ({
+            code: 13, // INTERNAL
+            message: 'Internal server error',
+            details: { originalError: exception.message },
+        }));
+    }
+}
+```
+
+Register your custom filter in your module:
+
+```typescript
+import { Module } from '@nestjs/common';
+import { APP_FILTER } from '@nestjs/core';
+import { GrpcModule } from 'nestjs-grpc';
+import { CustomGrpcExceptionFilter } from './custom-grpc-exception.filter';
+
+@Module({
+    imports: [
+        GrpcModule.forProvider({
+            protoPath: './protos/service.proto',
+            package: 'service',
+            url: 'localhost:50051',
+        }),
+    ],
+    providers: [
+        {
+            provide: APP_FILTER,
+            useClass: CustomGrpcExceptionFilter,
+        },
+    ],
+})
+export class AppModule {}
 ```
 
 ## 🧪 Testing
@@ -648,11 +707,9 @@ describe('GrpcAuthService', () => {
 
         const result = await service.validateToken('test-token');
 
-        expect(grpcClient.call).toHaveBeenCalledWith(
-            'AuthService',
-            'ValidateToken',
-            { token: 'test-token' }
-        );
+        expect(grpcClient.call).toHaveBeenCalledWith('AuthService', 'ValidateToken', {
+            token: 'test-token',
+        });
         expect(result).toBe(true);
     });
 });
@@ -704,35 +761,35 @@ GrpcModule.forProviderAsync({
 ```typescript
 interface GrpcOptions {
     // Required
-    protoPath: string | string[];     // Path to proto file(s)
-    package: string | string[];       // Proto package name(s)
+    protoPath: string | string[]; // Path to proto file(s)
+    package: string | string[]; // Proto package name(s)
 
     // Connection
-    url?: string;                     // gRPC server URL (default: 'localhost:50051')
-    secure?: boolean;                 // Use TLS (default: false)
+    url?: string; // gRPC server URL (default: 'localhost:50051')
+    secure?: boolean; // Use TLS (default: false)
 
     // TLS Configuration
-    rootCerts?: Buffer;              // Root certificates for TLS
-    privateKey?: Buffer;             // Private key for TLS
-    certChain?: Buffer;              // Certificate chain for TLS
+    rootCerts?: Buffer; // Root certificates for TLS
+    privateKey?: Buffer; // Private key for TLS
+    certChain?: Buffer; // Certificate chain for TLS
 
     // Message Limits
-    maxSendMessageSize?: number;      // Max send message size (default: 4MB)
-    maxReceiveMessageSize?: number;   // Max receive message size (default: 4MB)
+    maxSendMessageSize?: number; // Max send message size (default: 4MB)
+    maxReceiveMessageSize?: number; // Max receive message size (default: 4MB)
 
     // Client Options (Consumer mode)
-    timeout?: number;                 // Request timeout (default: 30000ms)
-    maxRetries?: number;             // Max retry attempts (default: 3)
-    retryDelay?: number;             // Delay between retries (default: 1000ms)
-    channelOptions?: object;         // gRPC channel options
+    timeout?: number; // Request timeout (default: 30000ms)
+    maxRetries?: number; // Max retry attempts (default: 3)
+    retryDelay?: number; // Delay between retries (default: 1000ms)
+    channelOptions?: object; // gRPC channel options
 
     // Logging
     logging?: {
-        enabled?: boolean;            // Enable/disable logging (default: true)
-        level?: string;              // Log level (default: 'log')
-        logErrors?: boolean;         // Log errors (default: true)
-        logPerformance?: boolean;    // Log performance metrics (default: false)
-        logDetails?: boolean;        // Log request/response details (default: false)
+        enabled?: boolean; // Enable/disable logging (default: true)
+        level?: string; // Log level (default: 'log')
+        logErrors?: boolean; // Log errors (default: true)
+        logPerformance?: boolean; // Log performance metrics (default: false)
+        logDetails?: boolean; // Log request/response details (default: false)
     };
 }
 ```

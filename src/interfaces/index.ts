@@ -554,35 +554,6 @@ export interface ServiceClientMetadata {
 }
 
 /**
- * Options for gRPC exception filter
- */
-export interface GrpcExceptionFilterOptions {
-    /**
-     * Enable/disable logging
-     * @default true
-     */
-    enableLogging?: boolean;
-
-    /**
-     * Maximum message length before truncation
-     * @default 1000
-     */
-    maxMessageLength?: number;
-
-    /**
-     * Custom fallback error message
-     * @default 'Internal server error occurred'
-     */
-    fallbackMessage?: string;
-
-    /**
-     * Custom fallback error code
-     * @default GrpcErrorCode.INTERNAL
-     */
-    fallbackCode?: GrpcErrorCode;
-}
-
-/**
  * gRPC error response
  */
 export interface GrpcErrorResponse {

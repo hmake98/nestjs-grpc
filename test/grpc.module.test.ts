@@ -4,7 +4,6 @@ import { Module, Controller } from '@nestjs/common';
 import { GrpcModule } from '../src/grpc.module';
 import { GrpcClientService } from '../src/services/grpc-client.service';
 import { GrpcProtoService } from '../src/services/grpc-proto.service';
-import { GrpcExceptionFilter } from '../src/exceptions/grpc.exception-filter';
 import { GrpcOptionsFactory } from '../src/interfaces';
 import {
     GRPC_OPTIONS,
