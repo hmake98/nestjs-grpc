@@ -1,78 +1,31 @@
-import {
-    DynamicModule,
-    Module,
-    Provider,
-    Global,
-    Type,
-    Injectable,
-    OnModuleInit,
-    Inject,
-} from '@nestjs/common';
-import { APP_FILTER, DiscoveryModule, DiscoveryService } from '@nestjs/core';
+import 'reflect-metadata';
 
-import {
-    GRPC_OPTIONS,
-    GRPC_CONTROLLER_METADATA,
-    GRPC_SERVICE_METADATA,
-    GRPC_METHOD_METADATA,
-    GRPC_CLIENT_TOKEN_PREFIX,
-} from './constants';
+import { DynamicModule, Module, Provider, Global } from '@nestjs/common';
+import { APP_FILTER, DiscoveryModule } from '@nestjs/core';
+
+import { GRPC_OPTIONS } from './constants';
+import { GrpcConsumerErrorHandler } from './exceptions/grpc.exception';
 import { GrpcExceptionFilter } from './exceptions/grpc.exception-filter';
 import {
     GrpcOptions,
     GrpcModuleAsyncOptions,
     GrpcOptionsFactory,
-    GrpcFeatureOptions,
-    GrpcFeatureAsyncOptions,
-    GrpcServiceRegistrationConfig,
-    ControllerMetadata,
-    ServiceClientMetadata,
+    GrpcConsumerOptions,
+    GrpcConsumerOptionsFactory,
+    GrpcConsumerModuleAsyncOptions,
 } from './interfaces';
 import { GrpcClientService } from './services/grpc-client.service';
-import { ProtoLoaderService } from './services/proto-loader.service';
-import { GrpcLogger } from './utils/logger';
-
-/**
- * Validates gRPC configuration options
- */
-function validateGrpcOptions(options: any): asserts options is GrpcOptions {
-    if (!options || typeof options !== 'object') {
-        throw new Error('gRPC options must be a valid object');
-    }
-
-    if (!options.protoPath || typeof options.protoPath !== 'string') {
-        throw new Error('protoPath is required and must be a string');
-    }
-
-    if (!options.package || typeof options.package !== 'string') {
-        throw new Error('package is required and must be a string');
-    }
-
-    if (options.url && typeof options.url !== 'string') {
-        throw new Error('url must be a string');
-    }
-
-    if (
-        options.maxSendMessageSize !== undefined &&
-        (typeof options.maxSendMessageSize !== 'number' || options.maxSendMessageSize <= 0)
-    ) {
-        throw new Error('maxSendMessageSize must be a positive number');
-    }
-
-    if (
-        options.maxReceiveMessageSize !== undefined &&
-        (typeof options.maxReceiveMessageSize !== 'number' || options.maxReceiveMessageSize <= 0)
-    ) {
-        throw new Error('maxReceiveMessageSize must be a positive number');
-    }
-}
+import { GrpcControllerDiscoveryService } from './services/grpc-controller-discovery.service';
+import { GrpcProtoService } from './services/grpc-proto.service';
+import { GrpcProviderService } from './services/grpc-provider.service';
+import { GrpcRegistryService } from './services/grpc-registry.service';
 
 /**
  * Global gRPC module for NestJS applications that provides comprehensive
- * gRPC client and server functionality with automatic service discovery.
+ * gRPC client and server functionality.
  *
- * Use forRoot() for basic configuration, forRootAsync() for dynamic configuration,
- * and forFeature() for feature modules with specific controllers and services.
+ * Use forProvider() for server-side configuration and forConsumer() for client-side configuration.
+ * Both support sync and async configurations.
  */
 @Global()
 @Module({
@@ -80,24 +33,21 @@ function validateGrpcOptions(options: any): asserts options is GrpcOptions {
 })
 export class GrpcModule {
     /**
-     * Validates gRPC configuration options (exposed for testing)
+     * Configure the gRPC module as a provider (server-side) with static options
      */
-    static validateGrpcOptions = validateGrpcOptions;
-
-    /**
-     * Configure the gRPC module with static options
-     */
-    static forRoot(options: GrpcOptions): DynamicModule {
-        validateGrpcOptions(options);
+    static forProvider(options: GrpcOptions): DynamicModule {
+        this.validateGrpcOptions(options);
 
         const providers: Provider[] = [
             {
                 provide: GRPC_OPTIONS,
                 useValue: options,
             },
-            ProtoLoaderService,
+            GrpcProtoService,
             GrpcClientService,
+            GrpcProviderService,
             GrpcRegistryService,
+            GrpcControllerDiscoveryService,
             {
                 provide: APP_FILTER,
                 useFactory: () => new GrpcExceptionFilter(),
@@ -109,14 +59,21 @@ export class GrpcModule {
             global: true,
             imports: [DiscoveryModule],
             providers,
-            exports: [GRPC_OPTIONS, ProtoLoaderService, GrpcClientService, GrpcRegistryService],
+            exports: [
+                GRPC_OPTIONS,
+                GrpcProtoService,
+                GrpcClientService,
+                GrpcProviderService,
+                GrpcRegistryService,
+                GrpcControllerDiscoveryService,
+            ],
         };
     }
 
     /**
-     * Configure the gRPC module with async options
+     * Configure the gRPC module as a provider (server-side) with async options
      */
-    static forRootAsync(options: GrpcModuleAsyncOptions): DynamicModule {
+    static forProviderAsync(options: GrpcModuleAsyncOptions): DynamicModule {
         if (!options || typeof options !== 'object') {
             throw new Error('Async options must be a valid object');
         }
@@ -124,9 +81,11 @@ export class GrpcModule {
         const providers: Provider[] = [
             ...this.createAsyncProviders(options),
             ...(options.providers ?? []),
-            ProtoLoaderService,
+            GrpcProtoService,
             GrpcClientService,
+            GrpcProviderService,
             GrpcRegistryService,
+            GrpcControllerDiscoveryService,
             {
                 provide: APP_FILTER,
                 useFactory: () => new GrpcExceptionFilter(),
@@ -138,7 +97,76 @@ export class GrpcModule {
             global: true,
             imports: [DiscoveryModule, ...(options.imports ?? [])],
             providers,
-            exports: [GRPC_OPTIONS, ProtoLoaderService, GrpcClientService, GrpcRegistryService],
+            exports: [
+                GRPC_OPTIONS,
+                GrpcProtoService,
+                GrpcClientService,
+                GrpcProviderService,
+                GrpcRegistryService,
+                GrpcControllerDiscoveryService,
+            ],
+        };
+    }
+
+    /**
+     * Configure the gRPC module as a consumer (client-side) with static options
+     */
+    static forConsumer(options: GrpcConsumerOptions): DynamicModule {
+        this.validateConsumerOptions(options);
+
+        const providers: Provider[] = [
+            {
+                provide: GRPC_OPTIONS,
+                useValue: options,
+            },
+            {
+                provide: GRPC_OPTIONS,
+                useValue: {
+                    protoPath: options.protoPath,
+                    package: options.package,
+                    url: options.url,
+                    secure: options.secure,
+                    rootCerts: options.rootCerts,
+                    privateKey: options.privateKey,
+                    certChain: options.certChain,
+                    loaderOptions: options.loaderOptions,
+                    logging: options.logging,
+                },
+            },
+            GrpcProtoService,
+            GrpcClientService,
+            GrpcConsumerErrorHandler,
+        ];
+
+        return {
+            module: GrpcModule,
+            imports: [DiscoveryModule],
+            providers,
+            exports: [GrpcClientService, GrpcConsumerErrorHandler],
+        };
+    }
+
+    /**
+     * Configure the gRPC module as a consumer (client-side) with async options
+     */
+    static forConsumerAsync(options: GrpcConsumerModuleAsyncOptions): DynamicModule {
+        if (!options || typeof options !== 'object') {
+            throw new Error('Async consumer options must be a valid object');
+        }
+
+        const providers: Provider[] = [
+            ...this.createConsumerAsyncProviders(options),
+            ...(options.providers ?? []),
+            GrpcProtoService,
+            GrpcClientService,
+            GrpcConsumerErrorHandler,
+        ];
+
+        return {
+            module: GrpcModule,
+            imports: [DiscoveryModule, ...(options.imports ?? [])],
+            providers,
+            exports: [GrpcClientService, GrpcConsumerErrorHandler],
         };
     }
 
@@ -148,12 +176,12 @@ export class GrpcModule {
     private static createAsyncProviders(options: GrpcModuleAsyncOptions): Provider[] {
         const providers: Provider[] = [];
 
-        if (options.useFactory) {
+        if (options.useFactory && typeof options.useFactory === 'function') {
             providers.push({
                 provide: GRPC_OPTIONS,
                 useFactory: async (...args: any[]) => {
                     const grpcOptions = await (options.useFactory as Function)(...args);
-                    validateGrpcOptions(grpcOptions);
+                    this.validateGrpcOptions(grpcOptions);
                     return grpcOptions;
                 },
                 inject: options.inject ?? [],
@@ -168,7 +196,7 @@ export class GrpcModule {
                     provide: GRPC_OPTIONS,
                     useFactory: async (optionsFactory: GrpcOptionsFactory) => {
                         const grpcOptions = await optionsFactory.createGrpcOptions();
-                        validateGrpcOptions(grpcOptions);
+                        this.validateGrpcOptions(grpcOptions);
                         return grpcOptions;
                     },
                     inject: [options.useClass],
@@ -179,7 +207,7 @@ export class GrpcModule {
                 provide: GRPC_OPTIONS,
                 useFactory: async (optionsFactory: GrpcOptionsFactory) => {
                     const grpcOptions = await optionsFactory.createGrpcOptions();
-                    validateGrpcOptions(grpcOptions);
+                    this.validateGrpcOptions(grpcOptions);
                     return grpcOptions;
                 },
                 inject: [options.useExisting],
@@ -192,323 +220,168 @@ export class GrpcModule {
     }
 
     /**
-     * Register gRPC feature modules with service registrations for external service clients
-     * Use this to register external gRPC services that this module needs to call
+     * Creates async providers for consumer modules
      */
-    static forFeature(options: GrpcFeatureOptions = {}): DynamicModule {
+    private static createConsumerAsyncProviders(
+        options: GrpcConsumerModuleAsyncOptions,
+    ): Provider[] {
         const providers: Provider[] = [];
-        const services = options.services ?? [];
-        const serviceRegistrations = options.serviceRegistrations ?? [];
 
-        // Add service providers for client injection
-        for (const serviceClass of services) {
-            providers.push(serviceClass);
-        }
-
-        // Create client providers for registered external services
-        for (const serviceRegistration of serviceRegistrations) {
-            const clientToken = `${GRPC_CLIENT_TOKEN_PREFIX}${serviceRegistration.serviceName}`;
-
-            providers.push({
-                provide: clientToken,
-                useFactory: (grpcClientService: GrpcClientService) => {
-                    return grpcClientService.create(serviceRegistration.serviceName, {
-                        service: serviceRegistration.serviceName,
-                        package: serviceRegistration.package,
-                        protoPath: serviceRegistration.protoPath,
-                        url: serviceRegistration.url,
-                        ...serviceRegistration.options,
-                    });
-                },
-                inject: [GrpcClientService],
-            });
-        }
-
-        // Add additional providers from options
-        if (options.providers) {
-            providers.push(...options.providers);
-        }
-
-        return {
-            module: GrpcModule,
-            imports: options.imports,
-            providers,
-            exports: [...services, ...(options.exports ?? [])],
-        };
-    }
-
-    /**
-     * Register gRPC feature modules with async configuration
-     */
-    static forFeatureAsync(options: GrpcFeatureAsyncOptions): DynamicModule {
-        const asyncProviders = this.createFeatureAsyncProviders(options);
-
-        return {
-            module: GrpcModule,
-            imports: options.imports,
-            providers: [
-                ...asyncProviders,
-                ...(options.providers ?? []),
+        if (options.useFactory && typeof options.useFactory === 'function') {
+            providers.push(
                 {
-                    provide: 'GRPC_FEATURE_MODULE',
-                    useFactory: async (featureOptions: GrpcFeatureOptions) => {
-                        return this.createFeatureModule(featureOptions);
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (...args: any[]) => {
+                        const consumerOptions = await (options.useFactory as Function)(...args);
+                        this.validateConsumerOptions(consumerOptions);
+                        return consumerOptions;
                     },
-                    inject: ['GRPC_FEATURE_OPTIONS'],
-                },
-            ],
-            exports: ['GRPC_FEATURE_MODULE'],
-        };
-    }
-
-    /**
-     * Creates async providers for feature modules
-     */
-    private static createFeatureAsyncProviders(options: GrpcFeatureAsyncOptions): Provider[] {
-        if (options.useFactory) {
-            return [
-                {
-                    provide: 'GRPC_FEATURE_OPTIONS',
-                    useFactory: options.useFactory,
                     inject: options.inject ?? [],
                 },
-            ];
-        }
-
-        if (options.useClass) {
-            return [
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (...args: any[]) => {
+                        const consumerOptions = await (options.useFactory as Function)(...args);
+                        return {
+                            protoPath: consumerOptions.protoPath,
+                            package: consumerOptions.package,
+                            url: consumerOptions.url,
+                            secure: consumerOptions.secure,
+                            rootCerts: consumerOptions.rootCerts,
+                            privateKey: consumerOptions.privateKey,
+                            certChain: consumerOptions.certChain,
+                            loaderOptions: consumerOptions.loaderOptions,
+                            logging: consumerOptions.logging,
+                        };
+                    },
+                    inject: options.inject ?? [],
+                },
+            );
+        } else if (options.useClass) {
+            providers.push(
                 {
                     provide: options.useClass,
                     useClass: options.useClass,
                 },
                 {
-                    provide: 'GRPC_FEATURE_OPTIONS',
-                    useFactory: async (optionsFactory: any) => {
-                        return typeof optionsFactory.createGrpcFeatureOptions === 'function'
-                            ? await optionsFactory.createGrpcFeatureOptions()
-                            : optionsFactory;
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
+                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
+                        this.validateConsumerOptions(consumerOptions);
+                        return consumerOptions;
                     },
                     inject: [options.useClass],
                 },
-            ];
-        }
-
-        if (options.useExisting) {
-            return [
                 {
-                    provide: 'GRPC_FEATURE_OPTIONS',
-                    useFactory: async (optionsFactory: any) => {
-                        return typeof optionsFactory.createGrpcFeatureOptions === 'function'
-                            ? await optionsFactory.createGrpcFeatureOptions()
-                            : optionsFactory;
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
+                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
+                        return {
+                            protoPath: consumerOptions.protoPath,
+                            package: consumerOptions.package,
+                            url: consumerOptions.url,
+                            secure: consumerOptions.secure,
+                            rootCerts: consumerOptions.rootCerts,
+                            privateKey: consumerOptions.privateKey,
+                            certChain: consumerOptions.certChain,
+                            loaderOptions: consumerOptions.loaderOptions,
+                            logging: consumerOptions.logging,
+                        };
+                    },
+                    inject: [options.useClass],
+                },
+            );
+        } else if (options.useExisting) {
+            providers.push(
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
+                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
+                        this.validateConsumerOptions(consumerOptions);
+                        return consumerOptions;
                     },
                     inject: [options.useExisting],
                 },
-            ];
-        }
-
-        throw new Error('One of useFactory, useClass, or useExisting must be provided');
-    }
-
-    /**
-     * Creates feature module providers from options
-     */
-    private static createFeatureModule(options: GrpcFeatureOptions): any {
-        // This is a simplified version - in a real implementation,
-        // you would need to handle the complex provider creation logic
-        return this.forFeature(options);
-    }
-}
-
-/**
- * Service responsible for discovering and registering gRPC controllers and services
- */
-@Injectable()
-export class GrpcRegistryService implements OnModuleInit {
-    private readonly logger: GrpcLogger;
-    private readonly controllers = new Map<string, ControllerMetadata>();
-    private readonly serviceClients = new Map<string, ServiceClientMetadata>();
-
-    constructor(
-        private readonly discoveryService: DiscoveryService,
-        @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
-    ) {
-        this.logger = new GrpcLogger({
-            ...options.logging,
-            context: 'GrpcRegistry',
-        });
-    }
-
-    /**
-     * Lifecycle hook - discovers and registers gRPC components on module initialization
-     */
-    onModuleInit(): void {
-        this.logger.lifecycle('Starting gRPC service discovery');
-
-        this.discoverControllers();
-        this.discoverServiceClients();
-
-        this.logger.lifecycle('gRPC service discovery completed', {
-            controllers: this.controllers.size,
-            serviceClients: this.serviceClients.size,
-        });
-
-        if (this.options.logging?.level === 'debug') {
-            const controllerNames = Array.from(this.controllers.keys());
-            const serviceClientNames = Array.from(this.serviceClients.keys());
-
-            if (controllerNames.length > 0) {
-                this.logger.debug(`Controllers: ${controllerNames.join(', ')}`);
-            }
-            if (serviceClientNames.length > 0) {
-                this.logger.debug(`Service clients: ${serviceClientNames.join(', ')}`);
-            }
-        }
-    }
-
-    /**
-     * Get all registered gRPC controllers
-     */
-    getControllers(): ReadonlyMap<string, ControllerMetadata> {
-        return this.controllers;
-    }
-
-    /**
-     * Get all registered gRPC service clients
-     */
-    getServiceClients(): ReadonlyMap<string, ServiceClientMetadata> {
-        return this.serviceClients;
-    }
-
-    /**
-     * Get a specific controller by service name
-     */
-    getController(serviceName: string): ControllerMetadata | undefined {
-        return this.controllers.get(serviceName);
-    }
-
-    /**
-     * Get a specific service client by service name
-     */
-    getServiceClient(serviceName: string): ServiceClientMetadata | undefined {
-        return this.serviceClients.get(serviceName);
-    }
-
-    /**
-     * Discovers all classes decorated with @GrpcController
-     */
-    private discoverControllers(): void {
-        const controllerWrappers = this.discoveryService
-            .getControllers()
-            .filter(
-                wrapper =>
-                    wrapper.metatype &&
-                    Reflect.hasMetadata(GRPC_CONTROLLER_METADATA, wrapper.metatype),
+                {
+                    provide: GRPC_OPTIONS,
+                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
+                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
+                        return {
+                            protoPath: consumerOptions.protoPath,
+                            package: consumerOptions.package,
+                            url: consumerOptions.url,
+                            secure: consumerOptions.secure,
+                            rootCerts: consumerOptions.rootCerts,
+                            privateKey: consumerOptions.privateKey,
+                            certChain: consumerOptions.certChain,
+                            loaderOptions: consumerOptions.loaderOptions,
+                            logging: consumerOptions.logging,
+                        };
+                    },
+                    inject: [options.useExisting],
+                },
             );
+        } else {
+            throw new Error('One of useFactory, useClass, or useExisting must be provided');
+        }
 
-        for (const wrapper of controllerWrappers) {
-            const className = wrapper.metatype?.name ?? 'Unknown';
+        return providers;
+    }
 
-            try {
-                const controllerClass = wrapper.metatype as Type<any>;
-                const metadata = this.extractControllerMetadata(controllerClass);
+    /**
+     * Validates consumer options
+     */
+    private static validateConsumerOptions(options: any): asserts options is GrpcConsumerOptions {
+        if (!options || typeof options !== 'object') {
+            throw new Error('Consumer options must be a valid object');
+        }
 
-                if (this.controllers.has(metadata.serviceName)) {
-                    this.logger.warn(
-                        `Controller ${metadata.serviceName} already registered, skipping duplicate`,
-                    );
-                    continue;
-                }
+        if (!options.protoPath || typeof options.protoPath !== 'string') {
+            throw new Error('protoPath is required and must be a string');
+        }
 
-                this.controllers.set(metadata.serviceName, metadata);
+        if (!options.package || typeof options.package !== 'string') {
+            throw new Error('package is required and must be a string');
+        }
 
-                this.logger.lifecycle(`Registered controller: ${metadata.serviceName}`, {
-                    methods: metadata.methods.size,
-                    className,
-                });
-            } catch (error) {
-                this.logger.error(`Failed to register controller ${className}`, error);
-            }
+        if (!options.url || typeof options.url !== 'string') {
+            throw new Error('url is required and must be a string');
         }
     }
 
     /**
-     * Discovers all classes decorated with @GrpcService
+     * Validates gRPC configuration options
      */
-    private discoverServiceClients(): void {
-        const serviceWrappers = this.discoveryService
-            .getProviders()
-            .filter(
-                wrapper =>
-                    wrapper.metatype &&
-                    Reflect.hasMetadata(GRPC_SERVICE_METADATA, wrapper.metatype),
-            );
-
-        for (const wrapper of serviceWrappers) {
-            const className = wrapper.metatype?.name ?? 'Unknown';
-
-            try {
-                const serviceClass = wrapper.metatype as Type<any>;
-                const metadata: ServiceClientMetadata = Reflect.getMetadata(
-                    GRPC_SERVICE_METADATA,
-                    serviceClass,
-                );
-
-                if (!metadata) {
-                    this.logger.warn(`Service class ${className} has no valid metadata`);
-                    continue;
-                }
-
-                if (this.serviceClients.has(metadata.serviceName)) {
-                    this.logger.warn(
-                        `Service client ${metadata.serviceName} already registered, skipping duplicate`,
-                    );
-                    continue;
-                }
-
-                this.serviceClients.set(metadata.serviceName, metadata);
-                this.logger.lifecycle(`Registered service client: ${metadata.serviceName}`, {
-                    className,
-                });
-            } catch (error) {
-                this.logger.error(`Failed to register service client ${className}`, error);
-            }
-        }
-    }
-
-    /**
-     * Extracts metadata from a gRPC controller class
-     */
-    private extractControllerMetadata(controllerClass: Type<any>): ControllerMetadata {
-        const controllerMetadata = Reflect.getMetadata(GRPC_CONTROLLER_METADATA, controllerClass);
-
-        if (!controllerMetadata) {
-            throw new Error(`Missing @GrpcController metadata on ${controllerClass.name}`);
+    private static validateGrpcOptions(options: any): asserts options is GrpcOptions {
+        if (!options || typeof options !== 'object') {
+            throw new Error('gRPC options must be a valid object');
         }
 
-        const methods = new Map<string, any>();
-
-        // Get all property names from the prototype
-        const prototype = controllerClass.prototype;
-        const methodNames = Object.getOwnPropertyNames(prototype).filter(
-            name => name !== 'constructor' && typeof prototype[name] === 'function',
-        );
-
-        // Check each method for gRPC metadata
-        for (const methodName of methodNames) {
-            const methodMetadata = Reflect.getMetadata(GRPC_METHOD_METADATA, prototype, methodName);
-
-            if (methodMetadata) {
-                methods.set(methodName, methodMetadata);
-                this.logger.debug(`Found gRPC method: ${controllerClass.name}.${methodName}`);
-            }
+        if (!options.protoPath || typeof options.protoPath !== 'string') {
+            throw new Error('protoPath is required and must be a string');
         }
 
-        return {
-            serviceName: controllerMetadata.serviceName,
-            package: controllerMetadata.package,
-            url: controllerMetadata.url,
-            methods,
-        };
+        if (!options.package || typeof options.package !== 'string') {
+            throw new Error('package is required and must be a string');
+        }
+
+        if (options.url && typeof options.url !== 'string') {
+            throw new Error('url must be a string');
+        }
+
+        if (
+            options.maxSendMessageSize !== undefined &&
+            (typeof options.maxSendMessageSize !== 'number' || options.maxSendMessageSize <= 0)
+        ) {
+            throw new Error('maxSendMessageSize must be a positive number');
+        }
+
+        if (
+            options.maxReceiveMessageSize !== undefined &&
+            (typeof options.maxReceiveMessageSize !== 'number' ||
+                options.maxReceiveMessageSize <= 0)
+        ) {
+            throw new Error('maxReceiveMessageSize must be a positive number');
+        }
     }
 }

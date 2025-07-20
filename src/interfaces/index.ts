@@ -676,3 +676,203 @@ export interface GrpcFeatureAsyncOptions extends Pick<ModuleMetadata, 'imports' 
      */
     inject?: any[];
 }
+
+/**
+ * Configuration options for consumer-side gRPC modules.
+ * Used when creating dedicated modules for consuming external gRPC services.
+ */
+export interface GrpcConsumerOptions {
+    /**
+     * Name of the service to consume
+     * @example 'AuthService'
+     */
+    serviceName: string;
+
+    /**
+     * Path to the proto file for the service
+     * @example './protos/auth.proto'
+     */
+    protoPath: string;
+
+    /**
+     * Package name as defined in the proto file
+     * @example 'auth.v1'
+     */
+    package: string;
+
+    /**
+     * URL of the gRPC service to connect to
+     * @example 'auth-service:50051'
+     */
+    url: string;
+
+    /**
+     * Whether to use secure connection (TLS)
+     * @default false
+     */
+    secure?: boolean;
+
+    /**
+     * Root certificates for TLS (when secure is true)
+     */
+    rootCerts?: Buffer;
+
+    /**
+     * Private key for TLS (when secure is true)
+     */
+    privateKey?: Buffer;
+
+    /**
+     * Certificate chain for TLS (when secure is true)
+     */
+    certChain?: Buffer;
+
+    /**
+     * Request timeout in milliseconds
+     * @min 1000
+     * @max 300000
+     * @default 30000
+     */
+    timeout?: number;
+
+    /**
+     * Maximum number of retry attempts
+     * @min 0
+     * @max 10
+     * @default 3
+     */
+    maxRetries?: number;
+
+    /**
+     * Retry delay in milliseconds
+     * @min 100
+     * @max 10000
+     * @default 1000
+     */
+    retryDelay?: number;
+
+    /**
+     * Options for the proto loader
+     */
+    loaderOptions?: Options;
+
+    /**
+     * Logging configuration for consumer
+     */
+    logging?: GrpcLoggingOptions;
+
+    /**
+     * Custom gRPC channel options
+     */
+    channelOptions?: Record<string, any>;
+}
+
+/**
+ * Factory for creating gRPC consumer options
+ */
+export interface GrpcConsumerOptionsFactory {
+    /**
+     * Creates gRPC consumer options
+     */
+    createGrpcConsumerOptions(): Promise<GrpcConsumerOptions> | GrpcConsumerOptions;
+}
+
+/**
+ * Async options for consumer gRPC modules
+ */
+export interface GrpcConsumerModuleAsyncOptions
+    extends Pick<ModuleMetadata, 'imports' | 'providers'> {
+    /**
+     * Factory function to create gRPC consumer options
+     */
+    useFactory?: (...args: any[]) => Promise<GrpcConsumerOptions> | GrpcConsumerOptions;
+
+    /**
+     * Class that implements GrpcConsumerOptionsFactory
+     */
+    useClass?: Type<GrpcConsumerOptionsFactory>;
+
+    /**
+     * Existing provider that implements GrpcConsumerOptionsFactory
+     */
+    useExisting?: Type<GrpcConsumerOptionsFactory>;
+
+    /**
+     * Dependencies to inject into the factory function
+     */
+    inject?: any[];
+}
+
+/**
+ * Configuration for consumer service methods
+ */
+export interface GrpcConsumerMethodOptions {
+    /**
+     * Custom timeout for this method in milliseconds
+     * Overrides the consumer timeout
+     */
+    timeout?: number;
+
+    /**
+     * Custom retry attempts for this method
+     * Overrides the consumer retry settings
+     */
+    maxRetries?: number;
+
+    /**
+     * Custom retry delay for this method
+     * Overrides the consumer retry delay
+     */
+    retryDelay?: number;
+
+    /**
+     * Whether to enable detailed logging for this method
+     * @default false
+     */
+    enableDetailedLogging?: boolean;
+}
+
+/**
+ * Error information for consumer operations
+ */
+export interface GrpcConsumerError {
+    /**
+     * gRPC status code
+     */
+    code: number;
+
+    /**
+     * Error message
+     */
+    message: string;
+
+    /**
+     * Service name where error occurred
+     */
+    serviceName: string;
+
+    /**
+     * Method name where error occurred
+     */
+    methodName: string;
+
+    /**
+     * Original error details
+     */
+    details?: any;
+
+    /**
+     * gRPC metadata
+     */
+    metadata?: any;
+
+    /**
+     * Error timestamp
+     */
+    timestamp: Date;
+
+    /**
+     * Request duration before error (milliseconds)
+     */
+    duration: number;
+}

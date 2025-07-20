@@ -89,7 +89,11 @@ export class GrpcLogger {
      */
     debug(message: string, context?: string): void {
         if (this.shouldLog('debug')) {
-            this.logger.debug(message, context ?? this.options.context);
+            if (context && context !== this.options.context) {
+                this.logger.debug(message, context);
+            } else {
+                this.logger.debug(message);
+            }
         }
     }
 
@@ -98,7 +102,11 @@ export class GrpcLogger {
      */
     verbose(message: string, context?: string): void {
         if (this.shouldLog('verbose')) {
-            this.logger.verbose(message, context ?? this.options.context);
+            if (context && context !== this.options.context) {
+                this.logger.verbose(message, context);
+            } else {
+                this.logger.verbose(message);
+            }
         }
     }
 
@@ -107,7 +115,11 @@ export class GrpcLogger {
      */
     log(message: string, context?: string): void {
         if (this.shouldLog('log')) {
-            this.logger.log(message, context ?? this.options.context);
+            if (context && context !== this.options.context) {
+                this.logger.log(message, context);
+            } else {
+                this.logger.log(message);
+            }
         }
     }
 
@@ -116,7 +128,11 @@ export class GrpcLogger {
      */
     warn(message: string, context?: string): void {
         if (this.shouldLog('warn')) {
-            this.logger.warn(message, context ?? this.options.context);
+            if (context && context !== this.options.context) {
+                this.logger.warn(message, context);
+            } else {
+                this.logger.warn(message);
+            }
         }
     }
 
@@ -125,10 +141,19 @@ export class GrpcLogger {
      */
     error(message: string, error?: Error | string, context?: string): void {
         if (this.shouldLog('error') && this.options.logErrors) {
+            const useContext = context && context !== this.options.context ? context : undefined;
             if (error instanceof Error) {
-                this.logger.error(message, error.stack, context ?? this.options.context);
+                if (useContext) {
+                    this.logger.error(message, error.stack, useContext);
+                } else {
+                    this.logger.error(message, error.stack);
+                }
             } else {
-                this.logger.error(message, error, context ?? this.options.context);
+                if (useContext) {
+                    this.logger.error(message, error, useContext);
+                } else {
+                    this.logger.error(message, error);
+                }
             }
         }
     }
@@ -153,7 +178,11 @@ export class GrpcLogger {
      */
     performance(message: string, duration: number, context?: string): void {
         if (this.options.logPerformance && this.shouldLog('verbose')) {
-            this.logger.verbose(`${message} (${duration}ms)`, context ?? this.options.context);
+            if (context && context !== this.options.context) {
+                this.logger.verbose(`${message} (${duration}ms)`, context);
+            } else {
+                this.logger.verbose(`${message} (${duration}ms)`);
+            }
         }
     }
 
@@ -178,13 +207,20 @@ export class GrpcLogger {
      */
     detail(message: string, data?: any, context?: string): void {
         if (this.options.logDetails && this.shouldLog('debug')) {
+            const useContext = context && context !== this.options.context ? context : undefined;
             if (data) {
-                this.logger.debug(
-                    `${message}: ${JSON.stringify(data, null, 2)}`,
-                    context ?? this.options.context,
-                );
+                const detailMessage = `${message}: ${JSON.stringify(data, null, 2)}`;
+                if (useContext) {
+                    this.logger.debug(detailMessage, useContext);
+                } else {
+                    this.logger.debug(detailMessage);
+                }
             } else {
-                this.logger.debug(message, context ?? this.options.context);
+                if (useContext) {
+                    this.logger.debug(message, useContext);
+                } else {
+                    this.logger.debug(message);
+                }
             }
         }
     }
@@ -194,7 +230,7 @@ export class GrpcLogger {
      */
     lifecycle(event: string, details?: Record<string, any>, context?: string): void {
         const message = details ? `${event} ${JSON.stringify(details)}` : event;
-        this.log(message, context ?? this.options.context);
+        this.log(message, context);
     }
 
     /**
@@ -222,9 +258,9 @@ export class GrpcLogger {
         const message = duration ? `${baseMessage} (${duration}ms)` : baseMessage;
 
         if (duration && this.options.logPerformance) {
-            this.verbose(message, context ?? this.options.context);
+            this.verbose(message, context);
         } else {
-            this.debug(message, context ?? this.options.context);
+            this.debug(message, context);
         }
     }
 
@@ -240,7 +276,7 @@ export class GrpcLogger {
         const message = details
             ? `${event} to ${target} ${JSON.stringify(details)}`
             : `${event} to ${target}`;
-        this.log(message, context ?? this.options.context);
+        this.log(message, context);
     }
 
     /**
