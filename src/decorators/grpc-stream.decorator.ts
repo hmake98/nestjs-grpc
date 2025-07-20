@@ -3,9 +3,8 @@ import { GRPC_METHOD_METADATA } from '../constants';
 import type { GrpcMethodOptions } from '../interfaces';
 
 /**
- * Decorator that marks a method as a gRPC streaming method handler.
- * Supports server streaming, client streaming, and bidirectional streaming patterns.
- * Always sets the streaming flag to true automatically.
+ * Decorator that marks a method as a gRPC streaming service method handler.
+ * Used on server-side controller methods to handle incoming gRPC streaming calls.
  *
  * @param methodNameOrOptions - The method name as defined in the proto file or options object
  *
@@ -13,46 +12,22 @@ import type { GrpcMethodOptions } from '../interfaces';
  * ```typescript
  * @GrpcController('DataService')
  * export class DataController {
- *   // Server streaming - send multiple responses for one request
+ *   // Basic streaming method mapping
  *   @GrpcStream('GetDataStream')
- *   getDataStream(request: DataRequest): Observable<DataChunk> {
- *     return new Observable(observer => {
- *       const data = this.dataService.getLargeDataset(request.id);
- *
- *       // Send data in chunks
- *       data.forEach((chunk, index) => {
- *         observer.next({ chunk, index, total: data.length });
- *       });
- *
- *       observer.complete();
- *     });
+ *   getDataStream(@GrpcStreamPayload() payload: DataStreamRequest): Observable<DataStreamResponse> {
+ *     return this.dataService.getDataStream(payload);
  *   }
  *
- *   // Client streaming - receive multiple requests, send one response
- *   @GrpcStream('UploadData')
- *   uploadData(request: Observable<UploadChunk>): Observable<UploadResponse> {
- *     return request.pipe(
- *       // Collect all chunks
- *       toArray(),
- *       // Process the complete upload
- *       switchMap(chunks => {
- *         return this.dataService.processUpload(chunks);
- *       }),
- *       // Return final response
- *       map(result => ({ success: true, uploadId: result.id }))
- *     );
+ *   // Explicit method name mapping with timeout
+ *   @GrpcStream({ methodName: 'UploadData', timeout: 60000 })
+ *   uploadData(@GrpcStreamPayload() payload: Observable<UploadRequest>): Observable<UploadResponse> {
+ *     return this.dataService.uploadData(payload);
  *   }
  *
- *   // Bidirectional streaming - real-time chat example
- *   @GrpcStream({ methodName: 'Chat', timeout: 0 }) // No timeout for chat
- *   chat(request: Observable<ChatMessage>): Observable<ChatMessage> {
- *     return request.pipe(
- *       // Process each incoming message
- *       switchMap(message => {
- *         // Broadcast to other users and return responses
- *         return this.chatService.broadcastMessage(message);
- *       })
- *     );
+ *   // Bidirectional streaming
+ *   @GrpcStream('Chat')
+ *   chat(@GrpcStreamPayload() payload: Observable<ChatMessage>): Observable<ChatResponse> {
+ *     return this.chatService.handleChat(payload);
  *   }
  * }
  * ```
@@ -60,8 +35,8 @@ import type { GrpcMethodOptions } from '../interfaces';
 export function GrpcStream(methodNameOrOptions?: string | GrpcMethodOptions): MethodDecorator {
     const options: GrpcMethodOptions =
         typeof methodNameOrOptions === 'string'
-            ? { methodName: methodNameOrOptions, streaming: true }
-            : { ...methodNameOrOptions, streaming: true };
+            ? { methodName: methodNameOrOptions }
+            : (methodNameOrOptions ?? {});
 
     return (target: object, key: string | symbol, descriptor: TypedPropertyDescriptor<any>) => {
         if (!descriptor || typeof descriptor.value !== 'function') {
@@ -75,7 +50,7 @@ export function GrpcStream(methodNameOrOptions?: string | GrpcMethodOptions): Me
             throw new Error('Method name cannot be empty');
         }
 
-        // Ensure streaming is always true for GrpcStream
+        // Mark as streaming method
         options.streaming = true;
 
         // Ensure metadata is applied to the prototype, not the constructor

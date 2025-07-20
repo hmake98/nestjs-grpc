@@ -23,17 +23,17 @@ import { loadProto, getServiceByName } from '../utils/proto-utils';
  * @example
  * ```typescript
  * // Inject the service
- * constructor(private protoLoader: ProtoLoaderService) {}
+ * constructor(private protoService: GrpcProtoService) {}
  *
  * // Get loaded proto definition
- * const definition = this.protoLoader.getProtoDefinition();
+ * const definition = this.protoService.getProtoDefinition();
  *
  * // Load a specific service
  * const authService = await this.protoLoader.loadService('AuthService');
  * ```
  */
 @Injectable()
-export class ProtoLoaderService implements OnModuleInit {
+export class GrpcProtoService implements OnModuleInit {
     private readonly logger: GrpcLogger;
     /** Cached proto definition object */
     private protoDefinition: any = null;

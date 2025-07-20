@@ -4,7 +4,7 @@ import * as grpc from '@grpc/grpc-js';
 import { Observable } from 'rxjs';
 
 import { GrpcClientService } from '../../src/services/grpc-client.service';
-import { ProtoLoaderService } from '../../src/services/proto-loader.service';
+import { GrpcProtoService } from '../../src/services/grpc-proto.service';
 import { GrpcLogger } from '../../src/utils/logger';
 import { GRPC_OPTIONS } from '../../src/constants';
 import { GrpcOptions } from '../../src/interfaces';
@@ -29,7 +29,7 @@ jest.mock('../../src/utils/proto-utils', () => ({
 
 describe('GrpcClientService', () => {
     let service: GrpcClientService;
-    let mockProtoLoaderService: jest.Mocked<ProtoLoaderService>;
+    let mockProtoService: jest.Mocked<GrpcProtoService>;
     let mockOptions: GrpcOptions;
 
     beforeEach(async () => {
@@ -42,10 +42,10 @@ describe('GrpcClientService', () => {
             child: jest.fn().mockReturnThis(),
         } as any;
 
-        mockProtoLoaderService = {
+        mockProtoService = {
             getProtoDefinition: jest.fn(),
-            isLoaded: jest.fn(),
-            loadProtoFile: jest.fn(),
+            load: jest.fn(),
+            loadService: jest.fn(),
         } as any;
 
         mockOptions = {
@@ -67,8 +67,8 @@ describe('GrpcClientService', () => {
                     useValue: mockOptions,
                 },
                 {
-                    provide: ProtoLoaderService,
-                    useValue: mockProtoLoaderService,
+                    provide: GrpcProtoService,
+                    useValue: mockProtoService,
                 },
                 {
                     provide: GrpcLogger,
@@ -99,29 +99,29 @@ describe('GrpcClientService', () => {
 
         it('should throw error if options are not provided', () => {
             expect(() => {
-                new GrpcClientService(null as any, mockProtoLoaderService);
+                new GrpcClientService(null as any, mockProtoService);
             }).toThrow('GRPC_OPTIONS is required');
         });
 
         it('should throw error if protoPath is missing', () => {
             expect(() => {
-                new GrpcClientService({ package: 'test' } as any, mockProtoLoaderService);
+                new GrpcClientService({ package: 'test' } as any, mockProtoService);
             }).toThrow('protoPath is required in gRPC options');
         });
 
         it('should throw error if package is missing', () => {
             expect(() => {
-                new GrpcClientService({ protoPath: '/test.proto' } as any, mockProtoLoaderService);
+                new GrpcClientService({ protoPath: '/test.proto' } as any, mockProtoService);
             }).toThrow('package is required in gRPC options');
         });
 
         it('should log debug information when debug logging is enabled', () => {
             const optionsWithDebug = {
                 ...mockOptions,
-                logging: { enabled: true, level: 'debug' as const, logDetails: true }
+                logging: { enabled: true, level: 'debug' as const, logDetails: true },
             };
             // The constructor itself doesn't log, so just verify it doesn't throw
-            expect(() => new GrpcClientService(optionsWithDebug, mockProtoLoaderService)).not.toThrow();
+            expect(() => new GrpcClientService(optionsWithDebug, mockProtoService)).not.toThrow();
         });
     });
 
@@ -132,10 +132,10 @@ describe('GrpcClientService', () => {
             expect(setInterval).toHaveBeenCalled();
         });
 
-        it('should throw error if proto loader service is not available', () => {
+        it('should throw error if proto service is not available', () => {
             const serviceWithoutProto = new GrpcClientService(mockOptions, null as any);
             expect(() => serviceWithoutProto.onModuleInit()).toThrow(
-                'ProtoLoaderService is not available',
+                'GrpcProtoService is not available',
             );
         });
 
@@ -151,11 +151,11 @@ describe('GrpcClientService', () => {
     describe('onModuleDestroy', () => {
         it('should cleanup resources', () => {
             const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
-            
+
             // Mock setInterval to avoid the "Failed to initialize" error
             const originalSetInterval = global.setInterval;
             global.setInterval = jest.fn().mockReturnValue(123);
-            
+
             try {
                 service.onModuleInit(); // Initialize first
                 service.onModuleDestroy();
@@ -239,7 +239,7 @@ describe('GrpcClientService', () => {
 
     describe('cleanupStaleClients', () => {
         it('should cleanup stale clients', done => {
-            const consoleSpy = jest.spyOn(console, 'log').mockImplementation();
+            const loggerSpy = jest.spyOn((service as any).logger, 'debug').mockImplementation();
             const mockClient = { close: jest.fn() };
             const staleTime = Date.now() - 10 * 60 * 1000; // 10 minutes ago
 
@@ -270,8 +270,8 @@ describe('GrpcClientService', () => {
             // Wait for cleanup to run
             setTimeout(() => {
                 expect(mockClient.close).toHaveBeenCalled();
-                expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Cleaned up'));
-                consoleSpy.mockRestore();
+                expect(loggerSpy).toHaveBeenCalledWith(expect.stringContaining('Cleaned up'));
+                loggerSpy.mockRestore();
 
                 // Restore setInterval
                 global.setInterval = originalSetInterval;
@@ -307,8 +307,6 @@ describe('GrpcClientService', () => {
         });
     });
 
-
-
     describe('create', () => {
         beforeEach(() => {
             const {
@@ -338,7 +336,7 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client = service.create('TestService');
 
@@ -357,7 +355,7 @@ describe('GrpcClientService', () => {
 
         it('should throw error for invalid options type', () => {
             const mockProtoDefinition = { TestService: jest.fn() };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('TestService', 'invalid' as any)).toThrow(
                 'Options must be an object',
@@ -366,7 +364,7 @@ describe('GrpcClientService', () => {
 
         it('should throw error for invalid URL option', () => {
             const mockProtoDefinition = { TestService: jest.fn() };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('TestService', { url: 123 } as any)).toThrow(
                 'URL option must be a string',
@@ -374,7 +372,7 @@ describe('GrpcClientService', () => {
         });
 
         it('should throw error for non-existent service', () => {
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue({});
+            mockProtoService.getProtoDefinition.mockReturnValue({});
 
             expect(() => service.create('NonExistentService')).toThrow('Service lookup failed');
         });
@@ -395,7 +393,7 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const client1 = service.create('TestService');
             const client2 = service.create('TestService');
@@ -413,8 +411,8 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor, // Simplified for direct lookup
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -439,8 +437,8 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor, // Simplified for direct lookup
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -461,7 +459,7 @@ describe('GrpcClientService', () => {
                 TestService: 'not a function',
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             // The error is now thrown as 'Service lookup failed' due to catch block
             expect(() => service.create('TestService')).toThrow('Service lookup failed');
@@ -476,7 +474,7 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('TestService', { url: '' })).toThrow(
                 'Failed to create gRPC client for service TestService',
@@ -497,8 +495,8 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -524,8 +522,8 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -551,8 +549,8 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -574,8 +572,8 @@ describe('GrpcClientService', () => {
                 throw new Error('Client creation failed');
             });
             const mockProtoDefinition = { TestService: mockServiceConstructor };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -586,7 +584,9 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['testMethod']);
 
-            expect(() => service.create('TestService')).toThrow('Failed to create gRPC client for service TestService');
+            expect(() => service.create('TestService')).toThrow(
+                'Failed to create gRPC client for service TestService',
+            );
         });
 
         it('should handle no methods found warning', () => {
@@ -596,8 +596,8 @@ describe('GrpcClientService', () => {
 
             const mockServiceConstructor = jest.fn().mockReturnValue({});
             const mockProtoDefinition = { TestService: mockServiceConstructor };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -614,10 +614,9 @@ describe('GrpcClientService', () => {
         });
     });
 
-
     describe('private methods edge cases', () => {
         it('should handle service lookup with null proto definition', () => {
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(null);
+            mockProtoService.getProtoDefinition.mockReturnValue(null);
 
             expect(() => service.create('TestService')).toThrow('Service lookup failed');
         });
@@ -627,7 +626,7 @@ describe('GrpcClientService', () => {
                 test: null,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             expect(() => service.create('test.invalid.path')).toThrow('Service lookup failed');
         });
@@ -645,7 +644,7 @@ describe('GrpcClientService', () => {
             });
 
             const mockProtoDefinition = { TestService: mockServiceConstructor };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const {
                 createClientCredentials,
@@ -673,8 +672,8 @@ describe('GrpcClientService', () => {
             });
 
             const mockProtoDefinition = { TestService: mockServiceConstructor };
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
-            
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+
             const {
                 createClientCredentials,
                 createChannelOptions,
@@ -702,7 +701,7 @@ describe('GrpcClientService', () => {
                 TestService: mockServiceConstructor,
             };
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
 
             const {
                 createClientCredentials,
@@ -714,11 +713,13 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['testMethod']);
 
-            expect(() => service.create('TestService')).toThrow('Failed to create gRPC client for service TestService');
+            expect(() => service.create('TestService')).toThrow(
+                'Failed to create gRPC client for service TestService',
+            );
         });
 
         it('should handle proto loader errors', () => {
-            mockProtoLoaderService.getProtoDefinition.mockImplementation(() => {
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
                 throw new Error('Proto not loaded');
             });
 
@@ -734,10 +735,10 @@ describe('GrpcClientService', () => {
                     ...mockOptions,
                     logging: { logErrors: false },
                 },
-                mockProtoLoaderService,
+                mockProtoService,
             );
 
-            mockProtoLoaderService.getProtoDefinition.mockReturnValue({});
+            mockProtoService.getProtoDefinition.mockReturnValue({});
 
             expect(() => serviceWithoutLogging.create('NonExistentService')).toThrow();
 

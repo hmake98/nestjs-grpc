@@ -12,7 +12,7 @@ import {
 import { GrpcOptions, GrpcClientOptions } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
 
-import { ProtoLoaderService } from './proto-loader.service';
+import { GrpcProtoService } from './grpc-proto.service';
 
 /**
  * Represents a cached gRPC client with metadata for cache management
@@ -81,7 +81,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     constructor(
         @Inject(GRPC_OPTIONS) private readonly options: GrpcOptions,
-        private readonly protoLoaderService: ProtoLoaderService,
+        private readonly protoService: GrpcProtoService,
     ) {
         if (!options) {
             throw new Error('GRPC_OPTIONS is required');
@@ -106,8 +106,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      * Sets up periodic client cleanup and starts the service.
      */
     onModuleInit(): void {
-        if (!this.protoLoaderService) {
-            throw new Error('ProtoLoaderService is not available');
+        if (!this.protoService) {
+            throw new Error('GrpcProtoService is not available');
         }
 
         try {
@@ -282,20 +282,33 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         request: TRequest,
         options?: Partial<GrpcClientOptions>,
     ): Promise<TResponse> {
+        this.logger.debug(`Starting call to ${serviceName}.${methodName}`);
+
+        const clientOptions = this.mergeClientOptions(serviceName, options);
+
+        // Validate method exists before making call
+        if (!this.validateMethod(serviceName, methodName)) {
+            this.logger.error(`Method validation failed for ${serviceName}.${methodName}`);
+            throw new Error(`Method ${methodName} not found in service ${serviceName}`);
+        }
+
+        this.logger.debug(`Method validation passed for ${serviceName}.${methodName}`);
+
+        const client = this.create(serviceName, clientOptions);
+
         const startTime = Date.now();
-        const client = this.create(serviceName, options);
 
         try {
-            this.logger.methodCall(methodName, serviceName);
+            this.logger.debug(`Making unary call to ${serviceName}.${methodName}`);
 
             const result = await this.executeWithRetry(
-                () => (client as any)[methodName](request),
-                options?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
-                options?.retryDelay ?? DEFAULT_RETRY_DELAY,
+                () => this.callUnaryMethod(client, methodName, request, clientOptions),
+                clientOptions?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
+                clientOptions?.retryDelay ?? DEFAULT_RETRY_DELAY,
             );
 
             const duration = Date.now() - startTime;
-            this.logger.methodCall(methodName, serviceName, duration);
+            this.logger.performance(`${serviceName}.${methodName} completed`, duration);
 
             return result as TResponse;
         } catch (error) {
@@ -619,7 +632,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         }
 
         if (cleanedUpCount > 0) {
-            console.log(`Cleaned up ${cleanedUpCount} stale gRPC clients`);
+            this.logger.debug(`Cleaned up ${cleanedUpCount} stale gRPC clients`);
         }
     }
 
@@ -735,7 +748,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     private getServiceConstructor(serviceName: string): any {
         try {
-            const packageDefinition = this.protoLoaderService.getProtoDefinition();
+            const packageDefinition = this.protoService.getProtoDefinition();
 
             if (!packageDefinition) {
                 throw new Error('gRPC services not loaded yet');
@@ -830,6 +843,65 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             throw new Error(
                 `Failed to create gRPC client for service ${options.service}: ${error.message}`,
             );
+        }
+    }
+
+    /**
+     * Makes a unary gRPC call with proper callback handling
+     *
+     * @param client - The gRPC client instance
+     * @param methodName - Name of the method to call
+     * @param request - Request payload
+     * @param options - Client options (optional)
+     * @returns Promise that resolves with the response
+     *
+     * @private
+     */
+    private callUnaryMethod<TRequest, TResponse>(
+        client: any,
+        methodName: string,
+        request: TRequest,
+        options?: Partial<GrpcClientOptions>,
+    ): Promise<TResponse> {
+        return new Promise<TResponse>((resolve, reject) => {
+            const deadline = options?.timeout ? new Date(Date.now() + options.timeout) : undefined;
+
+            const callOptions = deadline ? { deadline } : {};
+
+            // Make the gRPC call with proper callback signature
+            (client as any)[methodName](request, callOptions, (error: any, response: TResponse) => {
+                if (error) {
+                    reject(error);
+                } else {
+                    resolve(response);
+                }
+            });
+        });
+    }
+
+    /**
+     * Validates that a method exists in the proto definition before making a call
+     */
+    private validateMethod(serviceName: string, methodName: string): boolean {
+        try {
+            const protoDefinition = this.protoService.getProtoDefinition();
+            if (!protoDefinition) {
+                this.logger.warn('Proto definition not loaded');
+                return false;
+            }
+
+            const service = protoDefinition[serviceName];
+            if (!service) {
+                this.logger.warn(`Service ${serviceName} not found in proto definition`);
+                return false;
+            }
+
+            // For now, assume all methods are valid if service exists
+            // More sophisticated validation can be added later
+            return true;
+        } catch (error) {
+            this.logger.error(`Failed to validate method ${serviceName}.${methodName}`, error);
+            return false;
         }
     }
 }

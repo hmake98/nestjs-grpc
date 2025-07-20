@@ -362,6 +362,15 @@ export function getServiceMethods(serviceConstructor: any): string[] {
             methods = Object.keys(service.methods);
         } else if (service.methodsMap && typeof service.methodsMap === 'object') {
             methods = Object.keys(service.methodsMap);
+        } else if (service.methods && Array.isArray(service.methods)) {
+            // Handle array of method objects
+            methods = service.methods.map((method: any) => method.name).filter(Boolean);
+        } else {
+            // Try to get methods from the service object itself
+            methods = Object.keys(service).filter(
+                key =>
+                    key !== 'service' && key !== 'constructor' && typeof service[key] === 'object',
+            );
         }
 
         // Filter out invalid method names
