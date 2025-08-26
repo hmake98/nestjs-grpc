@@ -140,8 +140,7 @@ describe('GrpcClientService streams and retry', () => {
 		// Provide a minimal service method presence
 		const ServiceCtor: any = function () { (this as any).x = () => {}; };
 		proto.getProtoDefinition.mockReturnValue({ Svc: ServiceCtor });
-		const promise = service.call<any, any>('Svc', 'x', {}, { maxRetries: 2, retryDelay: 100 });
-		await jest.advanceTimersByTimeAsync(200);
+		const promise = service.call<any, any>('Svc', 'x', {}, { maxRetries: 2, retryDelay: 1 });
 		const res = await promise;
 		expect(res).toBe('done');
 	});
