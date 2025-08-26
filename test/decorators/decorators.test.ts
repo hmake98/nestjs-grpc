@@ -46,6 +46,13 @@ describe('Decorators', () => {
             }).toThrow();
         });
 
+        it('should throw error for whitespace-only service name', () => {
+            expect(() => {
+                @GrpcController('   ')
+                class TestController {}
+            }).toThrow('Service name cannot be empty');
+        });
+
         it('should throw error when applied to non-class', () => {
             const decorator = GrpcController('TestService');
             expect(() => {
@@ -210,6 +217,13 @@ describe('Decorators', () => {
                 @GrpcService(null as any)
                 class TestServiceClient {}
             }).toThrow();
+        });
+
+        it('should throw error for whitespace-only service name', () => {
+            expect(() => {
+                @GrpcService('   ')
+                class TestServiceClient {}
+            }).toThrow('Service name cannot be empty');
         });
 
         it('should throw error when applied to non-class', () => {

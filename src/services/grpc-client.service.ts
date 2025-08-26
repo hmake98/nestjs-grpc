@@ -116,6 +116,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 cleanupInterval: this.CLEANUP_INTERVAL,
             });
 
+            // Optionally trigger proto loading without blocking initialization
+            // The proto service itself will load on its own onModuleInit in most cases
+            // and client methods validate availability before usage.
+            void this.protoService.load();
+
             // Start cleanup interval
             this.cleanupInterval = setInterval(() => {
                 this.cleanupStaleClients();
@@ -198,7 +203,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      * });
      * ```
      */
-    create<T>(serviceName: string, options?: Partial<GrpcClientOptions>): T {
+    async create<T>(serviceName: string, options?: Partial<GrpcClientOptions>): Promise<T> {
         // Validate service name
         if (!serviceName || typeof serviceName !== 'string') {
             throw new Error('Service name is required and must be a string');
@@ -229,7 +234,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }
 
             // Create new client
-            const serviceConstructor = this.getServiceConstructor(serviceName);
+            const serviceConstructor = await this.getServiceConstructor(serviceName);
             const client = this.createClient(serviceConstructor, clientOptions);
 
             // Cache the client
@@ -294,7 +299,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.debug(`Method validation passed for ${serviceName}.${methodName}`);
 
-        const client = this.create(serviceName, clientOptions);
+        const client = await this.create(serviceName, clientOptions);
 
         const startTime = Date.now();
 
@@ -355,49 +360,76 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         options?: Partial<GrpcClientOptions>,
     ): Observable<TResponse> {
         const startTime = Date.now();
-        const client = this.create(serviceName, options);
 
-        try {
-            this.logger.methodCall(methodName, serviceName);
+        return new Observable<TResponse>(observer => {
+            this.create(serviceName, options)
+                .then(client => {
+                    try {
+                        this.logger.methodCall(methodName, serviceName);
 
-            const stream = (client as any)[methodName](request);
-            this.activeStreams.add(stream);
+                        const stream = (client as any)[methodName](request);
+                        this.activeStreams.add(stream);
 
-            const observable = fromEvent(stream, 'data').pipe(
-                map((data: TResponse) => {
-                    this.logger.debug(`Received stream data from ${serviceName}.${methodName}`);
-                    return data;
-                }),
-                catchError(error => {
+                        const subscription = fromEvent(stream, 'data')
+                            .pipe(
+                                map((data: TResponse) => {
+                                    this.logger.debug(
+                                        `Received stream data from ${serviceName}.${methodName}`,
+                                    );
+                                    return data;
+                                }),
+                                catchError(error => {
+                                    const duration = Date.now() - startTime;
+                                    this.logger.error(
+                                        `Server stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                                        error,
+                                    );
+                                    this.activeStreams.delete(stream);
+                                    return throwError(() => error);
+                                }),
+                            )
+                            .subscribe(observer);
+
+                        // Handle stream completion
+                        stream.on('end', () => {
+                            const duration = Date.now() - startTime;
+                            this.logger.performance(
+                                `Server stream ${serviceName}.${methodName} completed`,
+                                duration,
+                            );
+                            this.activeStreams.delete(stream);
+                            subscription.unsubscribe();
+                            observer.complete();
+                        });
+
+                        stream.on('error', (error: any) => {
+                            const duration = Date.now() - startTime;
+                            this.logger.error(
+                                `Server stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                                error,
+                            );
+                            this.activeStreams.delete(stream);
+                            subscription.unsubscribe();
+                            observer.error(error);
+                        });
+                    } catch (error) {
+                        const duration = Date.now() - startTime;
+                        this.logger.error(
+                            `Server stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                            error,
+                        );
+                        observer.error(error);
+                    }
+                })
+                .catch(error => {
                     const duration = Date.now() - startTime;
                     this.logger.error(
-                        `Server stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                        `Server stream ${serviceName}.${methodName} client creation failed after ${duration}ms`,
                         error,
                     );
-                    this.activeStreams.delete(stream);
-                    return throwError(() => error);
-                }),
-            );
-
-            // Handle stream completion
-            stream.on('end', () => {
-                const duration = Date.now() - startTime;
-                this.logger.performance(
-                    `Server stream ${serviceName}.${methodName} completed`,
-                    duration,
-                );
-                this.activeStreams.delete(stream);
-            });
-
-            return observable;
-        } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.error(
-                `Server stream ${serviceName}.${methodName} failed after ${duration}ms`,
-                error,
-            );
-            throw error;
-        }
+                    observer.error(error);
+                });
+        });
     }
 
     /**
@@ -437,7 +469,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         options?: Partial<GrpcClientOptions>,
     ): Promise<TResponse> {
         const startTime = Date.now();
-        const client = this.create(serviceName, options);
+        const client = await this.create(serviceName, options);
 
         try {
             this.logger.debug(`Calling client stream method: ${serviceName}.${methodName}`);
@@ -539,70 +571,98 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         options?: Partial<GrpcClientOptions>,
     ): Observable<TResponse> {
         const startTime = Date.now();
-        const client = this.create(serviceName, options);
 
-        try {
-            this.logger.debug(`Calling bidirectional stream method: ${serviceName}.${methodName}`);
+        return new Observable<TResponse>(observer => {
+            this.create(serviceName, options)
+                .then(client => {
+                    try {
+                        this.logger.debug(
+                            `Calling bidirectional stream method: ${serviceName}.${methodName}`,
+                        );
 
-            const stream = (client as any)[methodName]();
-            this.activeStreams.add(stream);
+                        const stream = (client as any)[methodName]();
+                        this.activeStreams.add(stream);
 
-            // Subscribe to the request observable and write to stream
-            request.subscribe({
-                next: (data: TRequest) => {
-                    stream.write(data);
-                },
-                error: error => {
-                    this.logger.error(
-                        `Bidirectional stream ${serviceName}.${methodName} request error`,
-                        error,
-                    );
-                    stream.end();
-                    this.activeStreams.delete(stream);
-                },
-                complete: () => {
-                    stream.end();
-                },
-            });
+                        // Subscribe to the request observable and write to stream
+                        request.subscribe({
+                            next: (data: TRequest) => {
+                                stream.write(data);
+                            },
+                            error: error => {
+                                this.logger.error(
+                                    `Bidirectional stream ${serviceName}.${methodName} request error`,
+                                    error,
+                                );
+                                stream.end();
+                                this.activeStreams.delete(stream);
+                                observer.error(error);
+                            },
+                            complete: () => {
+                                stream.end();
+                            },
+                        });
 
-            // Return response stream
-            const observable = fromEvent(stream, 'data').pipe(
-                map((data: TResponse) => {
-                    this.logger.debug(
-                        `Received bidirectional stream data from ${serviceName}.${methodName}`,
-                    );
-                    return data;
-                }),
-                catchError(error => {
+                        // Handle response stream
+                        const subscription = fromEvent(stream, 'data')
+                            .pipe(
+                                map((data: TResponse) => {
+                                    this.logger.debug(
+                                        `Received bidirectional stream data from ${serviceName}.${methodName}`,
+                                    );
+                                    return data;
+                                }),
+                                catchError(error => {
+                                    const duration = Date.now() - startTime;
+                                    this.logger.error(
+                                        `Bidirectional stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                                        error,
+                                    );
+                                    this.activeStreams.delete(stream);
+                                    return throwError(() => error);
+                                }),
+                            )
+                            .subscribe(observer);
+
+                        // Handle stream completion
+                        stream.on('end', () => {
+                            const duration = Date.now() - startTime;
+                            this.logger.performance(
+                                `Bidirectional stream ${serviceName}.${methodName} completed`,
+                                duration,
+                            );
+                            this.activeStreams.delete(stream);
+                            subscription.unsubscribe();
+                            observer.complete();
+                        });
+
+                        stream.on('error', (error: any) => {
+                            const duration = Date.now() - startTime;
+                            this.logger.error(
+                                `Bidirectional stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                                error,
+                            );
+                            this.activeStreams.delete(stream);
+                            subscription.unsubscribe();
+                            observer.error(error);
+                        });
+                    } catch (error) {
+                        const duration = Date.now() - startTime;
+                        this.logger.error(
+                            `Bidirectional stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                            error,
+                        );
+                        observer.error(error);
+                    }
+                })
+                .catch(error => {
                     const duration = Date.now() - startTime;
                     this.logger.error(
-                        `Bidirectional stream ${serviceName}.${methodName} failed after ${duration}ms`,
+                        `Bidirectional stream ${serviceName}.${methodName} client creation failed after ${duration}ms`,
                         error,
                     );
-                    this.activeStreams.delete(stream);
-                    return throwError(() => error);
-                }),
-            );
-
-            // Handle stream completion
-            stream.on('end', () => {
-                const duration = Date.now() - startTime;
-                this.logger.performance(
-                    `Bidirectional stream ${serviceName}.${methodName} completed`,
-                    duration,
-                );
-                this.activeStreams.delete(stream);
-            });
-
-            return observable;
-        } catch (error) {
-            const duration = Date.now() - startTime;
-            this.logger.error(
-                `Bidirectional stream ${serviceName}.${methodName} failed after ${duration}ms`,
-                error,
-            );
-            throw error;
-        }
+                    observer.error(error);
+                });
+        });
     }
 
     /**
@@ -746,8 +806,11 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      *
      * @private
      */
-    private getServiceConstructor(serviceName: string): any {
+    private async getServiceConstructor(serviceName: string): Promise<any> {
         try {
+            // Ensure proto service is loaded first
+            await this.protoService.load();
+
             const packageDefinition = this.protoService.getProtoDefinition();
 
             if (!packageDefinition) {
@@ -757,7 +820,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             const servicePath = this.findServicePath(packageDefinition, serviceName);
 
             if (!servicePath) {
-                throw new Error(`Service '${serviceName}' not found in proto definition`);
+                // List available services for debugging
+                const availableServices = this.getAvailableServiceNames(packageDefinition);
+                this.logger.debug(`Available services: ${availableServices.join(', ')}`);
+                throw new Error(
+                    `Service '${serviceName}' not found in proto definition. Available services: ${availableServices.join(', ')}`,
+                );
             }
 
             if (typeof servicePath !== 'function') {
@@ -770,10 +838,40 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 error.message.includes('not loaded yet') ||
                 error.message.includes('Proto not loaded')
             ) {
-                throw new Error('Service lookup failed');
+                throw new Error(`Service lookup failed: ${error.message}`);
             }
             throw error;
         }
+    }
+
+    /**
+     * Gets available service names from the proto definition for debugging
+     *
+     * @param obj - Proto package definition object
+     * @returns Array of service names
+     *
+     * @private
+     */
+    private getAvailableServiceNames(obj: any): string[] {
+        const serviceNames: string[] = [];
+
+        if (!obj || typeof obj !== 'object') {
+            return serviceNames;
+        }
+
+        for (const key in obj) {
+            if (obj.hasOwnProperty(key)) {
+                const value = obj[key];
+                if (typeof value === 'function') {
+                    serviceNames.push(key);
+                } else if (typeof value === 'object') {
+                    // Recursively search nested objects
+                    serviceNames.push(...this.getAvailableServiceNames(value));
+                }
+            }
+        }
+
+        return serviceNames;
     }
 
     /**

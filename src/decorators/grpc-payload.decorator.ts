@@ -22,7 +22,7 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
  * }
  * ```
  */
-export const GrpcPayload = createParamDecorator((data: unknown, ctx: ExecutionContext) => {
+export const GrpcPayload = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
     const rpcContext = ctx.switchToRpc();
     return rpcContext.getData();
 });
@@ -43,7 +43,7 @@ export const GrpcPayload = createParamDecorator((data: unknown, ctx: ExecutionCo
  * }
  * ```
  */
-export const GrpcStreamPayload = createParamDecorator((data: unknown, ctx: ExecutionContext) => {
+export const GrpcStreamPayload = createParamDecorator((_data: unknown, ctx: ExecutionContext) => {
     const rpcContext = ctx.switchToRpc();
     return rpcContext.getData();
 });

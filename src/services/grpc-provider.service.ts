@@ -156,10 +156,15 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
             return;
         }
 
-        // Wait for proto service to be ready
+        // Wait for proto service to be ready with timeout
         this.logger.debug('Ensuring proto service is loaded before registering controllers');
         try {
-            await this.protoService.load();
+            const loadPromise = this.protoService.load();
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Proto service load timeout')), 30000),
+            );
+
+            await Promise.race([loadPromise, timeoutPromise]);
             this.logger.debug('Proto service is ready');
         } catch (error) {
             this.logger.error('Failed to load proto service', error as Error);
@@ -168,6 +173,8 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
 
         this.logger.debug(`Registering ${this.pendingControllers.size} pending controllers`);
 
+        const registrationErrors: string[] = [];
+
         for (const [serviceName, metadata] of Array.from(this.pendingControllers.entries())) {
             if (!this.registeredServices.has(serviceName)) {
                 try {
@@ -175,12 +182,17 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
                     this.registeredServices.add(serviceName);
                     this.logger.debug(`Successfully registered pending controller: ${serviceName}`);
                 } catch (error) {
-                    this.logger.error(
-                        `Failed to register pending controller ${serviceName}`,
-                        error as Error,
-                    );
+                    const errorMsg = `Failed to register pending controller ${serviceName}: ${error.message}`;
+                    registrationErrors.push(errorMsg);
+                    this.logger.error(errorMsg, error as Error);
                 }
             }
+        }
+
+        if (registrationErrors.length > 0) {
+            this.logger.warn(
+                `Some controllers failed to register: ${registrationErrors.join(', ')}`,
+            );
         }
     }
 
