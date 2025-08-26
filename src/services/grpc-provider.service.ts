@@ -343,18 +343,25 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
                     reject(new Error(`Failed to bind server to ${url}: ${error.message}`));
                     return;
                 }
-
-                this.isRunning = true;
-
                 // Register any pending controller instances that were registered before server was running
                 this.registerPendingControllers()
                     .then(() => {
-                        this.logger.lifecycle('gRPC server started', {
-                            url,
-                            port,
-                            secure: this.options.secure,
-                        });
-                        resolve();
+                        try {
+                            this.server!.start();
+                            this.isRunning = true;
+                            this.logger.lifecycle('gRPC server started', {
+                                url,
+                                port,
+                                secure: this.options.secure,
+                            });
+                            resolve();
+                        } catch (startError: any) {
+                            reject(
+                                new Error(
+                                    `Failed to start gRPC server after binding: ${startError?.message ?? startError}`,
+                                ),
+                            );
+                        }
                     })
                     .catch(registerError => {
                         this.logger.error(
