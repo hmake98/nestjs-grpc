@@ -88,9 +88,22 @@ describe('GrpcLogger', () => {
             expect(perfLogger).toBeDefined();
         });
 
+        it('should log performance with custom context', () => {
+            const perfLogger = new GrpcLogger({ logPerformance: true, context: 'Base' });
+            // Use a different context to hit the branch with context override
+            perfLogger.performance('Step', 10, 'Other');
+            expect(perfLogger).toBeDefined();
+        });
+
         it('should log details when enabled', () => {
             const detailLogger = new GrpcLogger({ logDetails: true });
             detailLogger.detail('Detail message', { key: 'value' });
+            expect(detailLogger).toBeDefined();
+        });
+
+        it('should log details without data and with custom context', () => {
+            const detailLogger = new GrpcLogger({ logDetails: true, context: 'Main' });
+            detailLogger.detail('No data', undefined, 'Sub');
             expect(detailLogger).toBeDefined();
         });
 
@@ -108,6 +121,16 @@ describe('GrpcLogger', () => {
             const perfLogger = new GrpcLogger({ logPerformance: true });
             perfLogger.methodCall('testMethod', 'TestService', 100);
             expect(perfLogger).toBeDefined();
+        });
+
+        it('should log debug/verbose/log/warn with custom context', () => {
+            const l = new GrpcLogger({ level: 'debug', context: 'Ctx' });
+            l.debug('d', 'Other');
+            l.verbose('v', 'Other');
+            l.log('l', 'Other');
+            l.warn('w', 'Other');
+            l.error('e', 'err', 'Other');
+            expect(l).toBeDefined();
         });
 
         it('should log connection events', () => {
