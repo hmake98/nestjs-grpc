@@ -1,6 +1,14 @@
 import { Metadata } from '@grpc/grpc-js';
-import { GrpcException } from '../../src/exceptions/grpc.exception';
+import { 
+    GrpcException, 
+    GrpcConsumerException, 
+    GrpcConsumerErrorHandler,
+    getGrpcStatusDescription,
+    httpStatusToGrpcStatus,
+    RETRYABLE_STATUS_CODES
+} from '../../src/exceptions/grpc.exception';
 import { GrpcErrorCode } from '../../src/constants';
+import { GrpcConsumerError } from '../../src/interfaces';
 
 // Mock the @grpc/grpc-js module
 jest.mock('@grpc/grpc-js', () => ({
@@ -98,6 +106,16 @@ describe('GrpcException', () => {
                         message: 123 as any,
                     }),
             ).toThrow('Message is required and must be a string');
+        });
+
+        it('should throw error for whitespace-only message in options', () => {
+            expect(
+                () =>
+                    new GrpcException({
+                        code: GrpcErrorCode.OK,
+                        message: '   ',
+                    }),
+            ).toThrow('Message cannot be empty');
         });
 
         it('should handle invalid metadata gracefully', () => {
@@ -443,5 +461,304 @@ describe('GrpcException', () => {
             expect(exception.stack).toBeDefined();
             expect(exception.stack).toContain('GrpcException');
         });
+    });
+});
+
+describe('getGrpcStatusDescription', () => {
+    it('should return correct descriptions for all gRPC status codes', () => {
+        expect(getGrpcStatusDescription(GrpcErrorCode.OK)).toBe('Success');
+        expect(getGrpcStatusDescription(GrpcErrorCode.CANCELLED)).toBe('Operation was cancelled');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNKNOWN)).toBe('Unknown error');
+        expect(getGrpcStatusDescription(GrpcErrorCode.INVALID_ARGUMENT)).toBe('Invalid argument provided');
+        expect(getGrpcStatusDescription(GrpcErrorCode.DEADLINE_EXCEEDED)).toBe('Request timeout exceeded');
+        expect(getGrpcStatusDescription(GrpcErrorCode.NOT_FOUND)).toBe('Resource not found');
+        expect(getGrpcStatusDescription(GrpcErrorCode.ALREADY_EXISTS)).toBe('Resource already exists');
+        expect(getGrpcStatusDescription(GrpcErrorCode.PERMISSION_DENIED)).toBe('Permission denied');
+        expect(getGrpcStatusDescription(GrpcErrorCode.RESOURCE_EXHAUSTED)).toBe('Resource exhausted');
+        expect(getGrpcStatusDescription(GrpcErrorCode.FAILED_PRECONDITION)).toBe('Failed precondition');
+        expect(getGrpcStatusDescription(GrpcErrorCode.ABORTED)).toBe('Operation aborted');
+        expect(getGrpcStatusDescription(GrpcErrorCode.OUT_OF_RANGE)).toBe('Value out of range');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNIMPLEMENTED)).toBe('Method not implemented');
+        expect(getGrpcStatusDescription(GrpcErrorCode.INTERNAL)).toBe('Internal server error');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNAVAILABLE)).toBe('Service unavailable');
+        expect(getGrpcStatusDescription(GrpcErrorCode.DATA_LOSS)).toBe('Data loss');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNAUTHENTICATED)).toBe('Authentication required');
+    });
+
+    it('should return unknown status message for invalid codes', () => {
+        expect(getGrpcStatusDescription(999)).toBe('Unknown status code: 999');
+        expect(getGrpcStatusDescription(-1)).toBe('Unknown status code: -1');
+    });
+});
+
+describe('httpStatusToGrpcStatus', () => {
+    it('should map HTTP status codes to gRPC status codes', () => {
+        expect(httpStatusToGrpcStatus(200)).toBe(GrpcErrorCode.OK);
+        expect(httpStatusToGrpcStatus(400)).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+        expect(httpStatusToGrpcStatus(401)).toBe(GrpcErrorCode.UNAUTHENTICATED);
+        expect(httpStatusToGrpcStatus(403)).toBe(GrpcErrorCode.PERMISSION_DENIED);
+        expect(httpStatusToGrpcStatus(404)).toBe(GrpcErrorCode.NOT_FOUND);
+        expect(httpStatusToGrpcStatus(409)).toBe(GrpcErrorCode.ALREADY_EXISTS);
+        expect(httpStatusToGrpcStatus(412)).toBe(GrpcErrorCode.FAILED_PRECONDITION);
+        expect(httpStatusToGrpcStatus(416)).toBe(GrpcErrorCode.OUT_OF_RANGE);
+        expect(httpStatusToGrpcStatus(429)).toBe(GrpcErrorCode.RESOURCE_EXHAUSTED);
+        expect(httpStatusToGrpcStatus(499)).toBe(GrpcErrorCode.CANCELLED);
+        expect(httpStatusToGrpcStatus(500)).toBe(GrpcErrorCode.INTERNAL);
+        expect(httpStatusToGrpcStatus(501)).toBe(GrpcErrorCode.UNIMPLEMENTED);
+        expect(httpStatusToGrpcStatus(503)).toBe(GrpcErrorCode.UNAVAILABLE);
+        expect(httpStatusToGrpcStatus(504)).toBe(GrpcErrorCode.DEADLINE_EXCEEDED);
+    });
+
+    it('should return UNKNOWN for unmapped HTTP status codes', () => {
+        expect(httpStatusToGrpcStatus(100)).toBe(GrpcErrorCode.UNKNOWN);
+        expect(httpStatusToGrpcStatus(418)).toBe(GrpcErrorCode.UNKNOWN);
+        expect(httpStatusToGrpcStatus(999)).toBe(GrpcErrorCode.UNKNOWN);
+    });
+});
+
+describe('RETRYABLE_STATUS_CODES', () => {
+    it('should contain expected retryable status codes', () => {
+        expect(RETRYABLE_STATUS_CODES).toEqual([
+            GrpcErrorCode.UNAVAILABLE,
+            GrpcErrorCode.DEADLINE_EXCEEDED,
+            GrpcErrorCode.RESOURCE_EXHAUSTED,
+            GrpcErrorCode.ABORTED,
+            GrpcErrorCode.INTERNAL,
+        ]);
+    });
+});
+
+describe('GrpcConsumerException', () => {
+    const mockConsumerError: GrpcConsumerError = {
+        code: GrpcErrorCode.NOT_FOUND,
+        message: 'Resource not found',
+        serviceName: 'UserService',
+        methodName: 'GetUser',
+        details: { userId: '123' },
+        metadata: { 'trace-id': 'abc' },
+        timestamp: new Date('2023-01-01T00:00:00.000Z'),
+        duration: 1500,
+    };
+
+    it('should create exception with consumer error', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+
+        expect(exception.message).toBe('Resource not found');
+        expect(exception.name).toBe('GrpcConsumerException');
+        expect(exception.error).toBe(mockConsumerError);
+    });
+
+    it('should check if error is retryable', () => {
+        const retryableError = { ...mockConsumerError, code: GrpcErrorCode.UNAVAILABLE };
+        const nonRetryableError = { ...mockConsumerError, code: GrpcErrorCode.NOT_FOUND };
+
+        const retryableException = new GrpcConsumerException(retryableError);
+        const nonRetryableException = new GrpcConsumerException(nonRetryableError);
+
+        expect(retryableException.isRetryable()).toBe(true);
+        expect(nonRetryableException.isRetryable()).toBe(false);
+    });
+
+    it('should return error code', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getCode()).toBe(GrpcErrorCode.NOT_FOUND);
+    });
+
+    it('should return error details', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getDetails()).toEqual({ userId: '123' });
+    });
+
+    it('should return error metadata', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getMetadata()).toEqual({ 'trace-id': 'abc' });
+    });
+
+    it('should return service name', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getServiceName()).toBe('UserService');
+    });
+
+    it('should return method name', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getMethodName()).toBe('GetUser');
+    });
+
+    it('should return error duration', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getDuration()).toBe(1500);
+    });
+
+    it('should return error timestamp', () => {
+        const exception = new GrpcConsumerException(mockConsumerError);
+        expect(exception.getTimestamp()).toEqual(new Date('2023-01-01T00:00:00.000Z'));
+    });
+});
+
+describe('GrpcConsumerErrorHandler', () => {
+    let errorHandler: GrpcConsumerErrorHandler;
+    const mockStartTime = 1640995200000; // 2022-01-01T00:00:00.000Z
+
+    beforeEach(() => {
+        errorHandler = new GrpcConsumerErrorHandler();
+        jest.spyOn(Date, 'now').mockReturnValue(mockStartTime + 1000);
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
+    });
+
+    it('should handle gRPC errors with all properties', () => {
+        const grpcError = {
+            code: GrpcErrorCode.INVALID_ARGUMENT,
+            message: 'Invalid request',
+            details: { field: 'email' },
+            metadata: { 'request-id': '123' }
+        };
+
+        const exception = errorHandler.handleError(grpcError, 'UserService', 'CreateUser', mockStartTime);
+
+        expect(exception).toBeInstanceOf(GrpcConsumerException);
+        expect(exception.getCode()).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+        expect(exception.message).toBe('Invalid request');
+        expect(exception.getServiceName()).toBe('UserService');
+        expect(exception.getMethodName()).toBe('CreateUser');
+        expect(exception.getDetails()).toEqual({ field: 'email' });
+        expect(exception.getMetadata()).toEqual({ 'request-id': '123' });
+        expect(exception.getDuration()).toBe(1000);
+    });
+
+    it('should handle gRPC errors with fallback message from details', () => {
+        const grpcError = {
+            code: GrpcErrorCode.INTERNAL,
+            details: 'Fallback message'
+        };
+
+        const exception = errorHandler.handleError(grpcError, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('Fallback message');
+        expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
+    });
+
+    it('should handle gRPC errors with default message', () => {
+        const grpcError = {
+            code: GrpcErrorCode.UNKNOWN
+        };
+
+        const exception = errorHandler.handleError(grpcError, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('gRPC error');
+        expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
+    });
+
+    it('should handle standard Error objects', () => {
+        const error = new Error('Standard error message');
+
+        const exception = errorHandler.handleError(error, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('Standard error message');
+        expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
+        expect(exception.getDetails()).toBe(error.stack);
+    });
+
+    it('should handle Error objects with empty message', () => {
+        const error = new Error('');
+
+        const exception = errorHandler.handleError(error, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('Internal error');
+        expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
+    });
+
+    it('should handle string errors', () => {
+        const stringError = 'Something went wrong';
+
+        const exception = errorHandler.handleError(stringError, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('Something went wrong');
+        expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
+    });
+
+    it('should handle unknown error types', () => {
+        const unknownError = { someProperty: 'value' };
+
+        const exception = errorHandler.handleError(unknownError, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.message).toBe('Unknown error occurred');
+        expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
+        expect(exception.getDetails()).toBe(unknownError);
+    });
+
+    it('should check if errors are retryable', () => {
+        const retryableError = new Error('Service unavailable');
+        (retryableError as any).code = GrpcErrorCode.UNAVAILABLE;
+
+        const nonRetryableError = new Error('Not found');
+        (nonRetryableError as any).code = GrpcErrorCode.NOT_FOUND;
+
+        expect(errorHandler.isRetryableError(retryableError)).toBe(true);
+        expect(errorHandler.isRetryableError(nonRetryableError)).toBe(false);
+    });
+
+    it('should handle standard errors in isRetryableError', () => {
+        const standardError = new Error('Standard error');
+        
+        // Standard errors get mapped to INTERNAL which is retryable
+        expect(errorHandler.isRetryableError(standardError)).toBe(true);
+    });
+
+    it('should log debug message for cancelled errors', () => {
+        const cancelledError = {
+            code: GrpcErrorCode.CANCELLED,
+            message: 'Operation cancelled'
+        };
+
+        const exception = errorHandler.handleError(cancelledError, 'TestService', 'TestMethod', mockStartTime);
+
+        expect(exception.getCode()).toBe(GrpcErrorCode.CANCELLED);
+        expect(exception.message).toBe('Operation cancelled');
+    });
+
+    it('should handle null metadata gracefully', () => {
+        const exception = new GrpcException({
+            code: GrpcErrorCode.OK,
+            message: 'Test',
+            metadata: null as any
+        });
+
+        expect(exception.getMetadata()).toEqual({});
+    });
+
+    it('should handle undefined metadata gracefully', () => {
+        const exception = new GrpcException({
+            code: GrpcErrorCode.OK,
+            message: 'Test',
+            metadata: undefined
+        });
+
+        expect(exception.getMetadata()).toEqual({});
+    });
+
+    it('should skip null/undefined metadata values in toMetadata conversion', () => {
+        const mockMetadata = {
+            add: jest.fn(),
+        };
+        MockedMetadata.mockImplementation(() => mockMetadata as any);
+
+        const exception = new GrpcException({
+            code: GrpcErrorCode.OK,
+            message: 'Test',
+            metadata: { 
+                validKey: 'value',
+                nullKey: null as any,
+                undefinedKey: undefined as any
+            },
+        });
+
+        exception.toMetadata();
+
+        expect(mockMetadata.add).toHaveBeenCalledWith('validKey', 'value');
+        expect(mockMetadata.add).not.toHaveBeenCalledWith('nullKey', null);
+        expect(mockMetadata.add).not.toHaveBeenCalledWith('undefinedKey', undefined);
     });
 });

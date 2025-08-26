@@ -579,6 +579,35 @@ export interface GrpcErrorResponse {
 }
 
 /**
+ * Options for the gRPC exception filter
+ */
+export interface GrpcExceptionFilterOptions {
+    /**
+     * Enable/disable logging within the filter
+     * @default true
+     */
+    enableLogging?: boolean;
+
+    /**
+     * Max length for messages logged by the filter
+     * @default 1000
+     */
+    maxMessageLength?: number;
+
+    /**
+     * Fallback message when normalization fails
+     * @default 'Internal server error occurred'
+     */
+    fallbackMessage?: string;
+
+    /**
+     * Fallback gRPC code when normalization fails (grpc.status.INTERNAL)
+     * @default 13
+     */
+    fallbackCode?: number;
+}
+
+/**
  * gRPC error details
  */
 export interface GrpcErrorDetails {

@@ -108,10 +108,6 @@ export class GrpcModule {
         const providers: Provider[] = [
             {
                 provide: GRPC_OPTIONS,
-                useValue: options,
-            },
-            {
-                provide: GRPC_OPTIONS,
                 useValue: {
                     protoPath: options.protoPath,
                     package: options.package,
@@ -122,6 +118,12 @@ export class GrpcModule {
                     certChain: options.certChain,
                     loaderOptions: options.loaderOptions,
                     logging: options.logging,
+                    // Add consumer-specific properties
+                    serviceName: options.serviceName,
+                    timeout: options.timeout,
+                    maxRetries: options.maxRetries,
+                    retryDelay: options.retryDelay,
+                    channelOptions: options.channelOptions,
                 },
             },
             GrpcProtoService,
@@ -219,35 +221,31 @@ export class GrpcModule {
         const providers: Provider[] = [];
 
         if (options.useFactory && typeof options.useFactory === 'function') {
-            providers.push(
-                {
-                    provide: GRPC_OPTIONS,
-                    useFactory: async (...args: any[]) => {
-                        const consumerOptions = await (options.useFactory as Function)(...args);
-                        this.validateConsumerOptions(consumerOptions);
-                        return consumerOptions;
-                    },
-                    inject: options.inject ?? [],
+            providers.push({
+                provide: GRPC_OPTIONS,
+                useFactory: async (...args: any[]) => {
+                    const consumerOptions = await (options.useFactory as Function)(...args);
+                    this.validateConsumerOptions(consumerOptions);
+                    return {
+                        protoPath: consumerOptions.protoPath,
+                        package: consumerOptions.package,
+                        url: consumerOptions.url,
+                        secure: consumerOptions.secure,
+                        rootCerts: consumerOptions.rootCerts,
+                        privateKey: consumerOptions.privateKey,
+                        certChain: consumerOptions.certChain,
+                        loaderOptions: consumerOptions.loaderOptions,
+                        logging: consumerOptions.logging,
+                        // Add consumer-specific properties
+                        serviceName: consumerOptions.serviceName,
+                        timeout: consumerOptions.timeout,
+                        maxRetries: consumerOptions.maxRetries,
+                        retryDelay: consumerOptions.retryDelay,
+                        channelOptions: consumerOptions.channelOptions,
+                    };
                 },
-                {
-                    provide: GRPC_OPTIONS,
-                    useFactory: async (...args: any[]) => {
-                        const consumerOptions = await (options.useFactory as Function)(...args);
-                        return {
-                            protoPath: consumerOptions.protoPath,
-                            package: consumerOptions.package,
-                            url: consumerOptions.url,
-                            secure: consumerOptions.secure,
-                            rootCerts: consumerOptions.rootCerts,
-                            privateKey: consumerOptions.privateKey,
-                            certChain: consumerOptions.certChain,
-                            loaderOptions: consumerOptions.loaderOptions,
-                            logging: consumerOptions.logging,
-                        };
-                    },
-                    inject: options.inject ?? [],
-                },
-            );
+                inject: options.inject ?? [],
+            });
         } else if (options.useClass) {
             providers.push(
                 {
@@ -259,14 +257,6 @@ export class GrpcModule {
                     useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
                         const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
                         this.validateConsumerOptions(consumerOptions);
-                        return consumerOptions;
-                    },
-                    inject: [options.useClass],
-                },
-                {
-                    provide: GRPC_OPTIONS,
-                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
-                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
                         return {
                             protoPath: consumerOptions.protoPath,
                             package: consumerOptions.package,
@@ -277,41 +267,43 @@ export class GrpcModule {
                             certChain: consumerOptions.certChain,
                             loaderOptions: consumerOptions.loaderOptions,
                             logging: consumerOptions.logging,
+                            // Add consumer-specific properties
+                            serviceName: consumerOptions.serviceName,
+                            timeout: consumerOptions.timeout,
+                            maxRetries: consumerOptions.maxRetries,
+                            retryDelay: consumerOptions.retryDelay,
+                            channelOptions: consumerOptions.channelOptions,
                         };
                     },
                     inject: [options.useClass],
                 },
             );
         } else if (options.useExisting) {
-            providers.push(
-                {
-                    provide: GRPC_OPTIONS,
-                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
-                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
-                        this.validateConsumerOptions(consumerOptions);
-                        return consumerOptions;
-                    },
-                    inject: [options.useExisting],
+            providers.push({
+                provide: GRPC_OPTIONS,
+                useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
+                    const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
+                    this.validateConsumerOptions(consumerOptions);
+                    return {
+                        protoPath: consumerOptions.protoPath,
+                        package: consumerOptions.package,
+                        url: consumerOptions.url,
+                        secure: consumerOptions.secure,
+                        rootCerts: consumerOptions.rootCerts,
+                        privateKey: consumerOptions.privateKey,
+                        certChain: consumerOptions.certChain,
+                        loaderOptions: consumerOptions.loaderOptions,
+                        logging: consumerOptions.logging,
+                        // Add consumer-specific properties
+                        serviceName: consumerOptions.serviceName,
+                        timeout: consumerOptions.timeout,
+                        maxRetries: consumerOptions.maxRetries,
+                        retryDelay: consumerOptions.retryDelay,
+                        channelOptions: consumerOptions.channelOptions,
+                    };
                 },
-                {
-                    provide: GRPC_OPTIONS,
-                    useFactory: async (optionsFactory: GrpcConsumerOptionsFactory) => {
-                        const consumerOptions = await optionsFactory.createGrpcConsumerOptions();
-                        return {
-                            protoPath: consumerOptions.protoPath,
-                            package: consumerOptions.package,
-                            url: consumerOptions.url,
-                            secure: consumerOptions.secure,
-                            rootCerts: consumerOptions.rootCerts,
-                            privateKey: consumerOptions.privateKey,
-                            certChain: consumerOptions.certChain,
-                            loaderOptions: consumerOptions.loaderOptions,
-                            logging: consumerOptions.logging,
-                        };
-                    },
-                    inject: [options.useExisting],
-                },
-            );
+                inject: [options.useExisting],
+            });
         } else {
             throw new Error('One of useFactory, useClass, or useExisting must be provided');
         }
