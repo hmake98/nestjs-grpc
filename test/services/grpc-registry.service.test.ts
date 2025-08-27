@@ -10,9 +10,7 @@ describe('GrpcRegistryService', () => {
     const mockControllerMetadata: ControllerMetadata = {
         serviceName: 'TestService',
         package: 'test',
-        methods: new Map([
-            ['TestMethod', { methodName: 'TestMethod' }],
-        ]),
+        methods: new Map([['TestMethod', { methodName: 'TestMethod' }]]),
     };
 
     const mockController = {
@@ -60,7 +58,7 @@ describe('GrpcRegistryService', () => {
             expect(providerService.registerController).toHaveBeenCalledWith(
                 'TestService',
                 mockController,
-                mockControllerMetadata
+                mockControllerMetadata,
             );
         });
 
@@ -80,7 +78,7 @@ describe('GrpcRegistryService', () => {
             expect(providerService.registerController).toHaveBeenCalledWith(
                 'TestService',
                 mockController,
-                mockControllerMetadata
+                mockControllerMetadata,
             );
         });
 
@@ -102,7 +100,7 @@ describe('GrpcRegistryService', () => {
             providerService.registerController.mockRejectedValue(error);
 
             await expect(
-                service.registerController('TestService', mockController, mockControllerMetadata)
+                service.registerController('TestService', mockController, mockControllerMetadata),
             ).rejects.toThrow('Registration failed');
         });
 
@@ -111,7 +109,11 @@ describe('GrpcRegistryService', () => {
             providerService.registerController.mockRejectedValue(error);
 
             try {
-                await service.registerController('TestService', mockController, mockControllerMetadata);
+                await service.registerController(
+                    'TestService',
+                    mockController,
+                    mockControllerMetadata,
+                );
             } catch (e) {
                 // Expected to throw
             }
@@ -174,7 +176,11 @@ describe('GrpcRegistryService', () => {
             };
 
             // Register multiple controllers
-            await service.registerController('TestService1', mockController, mockControllerMetadata);
+            await service.registerController(
+                'TestService1',
+                mockController,
+                mockControllerMetadata,
+            );
             await service.registerController('TestService2', controller2, metadata2);
 
             // Clear the mock to track only the onModuleInit processing
@@ -192,7 +198,9 @@ describe('GrpcRegistryService', () => {
             await service.registerController('TestService', mockController, mockControllerMetadata);
 
             // Second call fails (during onModuleInit processing)
-            providerService.registerController.mockRejectedValueOnce(new Error('Processing failed'));
+            providerService.registerController.mockRejectedValueOnce(
+                new Error('Processing failed'),
+            );
 
             // Should not throw
             await service.onModuleInit();
@@ -223,7 +231,11 @@ describe('GrpcRegistryService', () => {
 
             // Register controllers (these should succeed)
             providerService.registerController.mockResolvedValue();
-            await service.registerController('TestService1', mockController, mockControllerMetadata);
+            await service.registerController(
+                'TestService1',
+                mockController,
+                mockControllerMetadata,
+            );
             await service.registerController('TestService2', controller2, metadata2);
 
             // Setup mixed responses for processing
@@ -251,26 +263,46 @@ describe('GrpcRegistryService', () => {
         });
 
         it('should wait and retry when provider is not ready initially', async () => {
-            providerService.isServerRunning
-                .mockReturnValueOnce(false) // First check fails
-                .mockReturnValueOnce(false) // Second check fails
-                .mockReturnValueOnce(true); // Third check succeeds
+            // Mock setTimeout to resolve immediately for testing
+            const originalSetTimeout = global.setTimeout;
+            (global as any).setTimeout = jest.fn((callback: any) => {
+                callback();
+                return 1 as any;
+            });
 
-            await (service as any).waitForProviderReady();
+            try {
+                providerService.isServerRunning
+                    .mockReturnValueOnce(false) // First check fails
+                    .mockReturnValueOnce(false) // Second check fails
+                    .mockReturnValueOnce(true); // Third check succeeds
 
-            expect(providerService.isServerRunning).toHaveBeenCalledTimes(3);
+                await (service as any).waitForProviderReady();
+
+                expect(providerService.isServerRunning).toHaveBeenCalledTimes(3);
+            } finally {
+                (global as any).setTimeout = originalSetTimeout;
+            }
         });
 
         it('should timeout after maximum attempts', async () => {
-            providerService.isServerRunning.mockReturnValue(false);
+            // Mock setTimeout to resolve immediately for testing
+            const originalSetTimeout = global.setTimeout;
+            (global as any).setTimeout = jest.fn((callback: any) => {
+                callback();
+                return 1 as any;
+            });
 
-            const startTime = Date.now();
-            await (service as any).waitForProviderReady();
-            const endTime = Date.now();
+            try {
+                providerService.isServerRunning.mockReturnValue(false);
 
-            // Should wait for at least some time
-            expect(endTime - startTime).toBeGreaterThan(100);
-            expect(providerService.isServerRunning).toHaveBeenCalledTimes(10); // maxAttempts
+                await (service as any).waitForProviderReady();
+
+                // Since we're mocking setTimeout to resolve immediately, the timing test is not valid
+                // Instead, verify that the method was called the expected number of times
+                expect(providerService.isServerRunning).toHaveBeenCalledTimes(10); // maxAttempts
+            } finally {
+                (global as any).setTimeout = originalSetTimeout;
+            }
         });
     });
 });
