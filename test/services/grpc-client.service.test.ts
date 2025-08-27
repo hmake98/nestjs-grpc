@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
+import { Observable, Subject, of, throwError } from 'rxjs';
 import * as grpc from '@grpc/grpc-js';
-import { Observable } from 'rxjs';
+import { EventEmitter } from 'events';
 
 import { GrpcClientService } from '../../src/services/grpc-client.service';
 import { GrpcProtoService } from '../../src/services/grpc-proto.service';
@@ -9,43 +9,151 @@ import { GrpcLogger } from '../../src/utils/logger';
 import { GRPC_OPTIONS } from '../../src/constants';
 import { GrpcOptions } from '../../src/interfaces';
 
-// Mock @grpc/grpc-js
-jest.mock('@grpc/grpc-js', () => ({
-    credentials: {
-        createInsecure: jest.fn(),
-        createSsl: jest.fn(),
-    },
-    Metadata: jest.fn().mockImplementation(() => ({
-        add: jest.fn(),
-    })),
-}));
+// Mock stream class
+class MockStream extends EventEmitter {
+    private cancelled: boolean = false;
 
-// Mock proto-utils
-jest.mock('../../src/utils/proto-utils', () => ({
-    createClientCredentials: jest.fn(),
-    createChannelOptions: jest.fn(),
-    getServiceMethods: jest.fn(),
-}));
+    constructor() {
+        super();
+        this.cancelled = false;
+    }
+
+    write(data: any) {
+        if (!this.cancelled) {
+            process.nextTick(() => this.emit('data', data));
+        }
+    }
+
+    end(data?: any) {
+        if (data) this.write(data);
+        process.nextTick(() => {
+            if (!this.cancelled) {
+                this.emit('end');
+            }
+        });
+    }
+
+    cancel() {
+        this.cancelled = true;
+        this.emit('cancelled');
+    }
+
+    destroy() {
+        this.cancelled = true;
+        this.emit('close');
+    }
+}
+
+// Mock grpc module completely
+jest.mock('../../src/utils/proto-utils');
+
+jest.mock('@grpc/grpc-js', () => {
+    const mockStatus = {
+        OK: 0,
+        CANCELLED: 1,
+        UNKNOWN: 2,
+        INVALID_ARGUMENT: 3,
+        DEADLINE_EXCEEDED: 4,
+        NOT_FOUND: 5,
+        ALREADY_EXISTS: 6,
+        PERMISSION_DENIED: 7,
+        RESOURCE_EXHAUSTED: 8,
+        FAILED_PRECONDITION: 9,
+        ABORTED: 10,
+        OUT_OF_RANGE: 11,
+        UNIMPLEMENTED: 12,
+        INTERNAL: 13,
+        UNAVAILABLE: 14,
+        DATA_LOSS: 15,
+        UNAUTHENTICATED: 16,
+    };
+
+    return {
+        credentials: {
+            createInsecure: jest.fn(() => ({ _isInsecure: true })),
+            createSsl: jest.fn((root, key, cert) => ({ _isSsl: true, root, key, cert })),
+        },
+        status: mockStatus,
+        Metadata: jest.fn().mockImplementation(() => ({
+            add: jest.fn(),
+            get: jest.fn(),
+            set: jest.fn(),
+            clone: jest.fn().mockReturnThis(),
+        })),
+    };
+});
 
 describe('GrpcClientService', () => {
     let service: GrpcClientService;
     let mockProtoService: jest.Mocked<GrpcProtoService>;
     let mockOptions: GrpcOptions;
+    let module: TestingModule;
+
+    const createMockClient = (options: any = {}) => ({
+        testMethod: jest.fn((req: any, metadata: any, opts: any, callback?: any) => {
+            if (typeof opts === 'function') {
+                callback = opts;
+                opts = {};
+            }
+            if (options.shouldFail) {
+                const error = new Error(options.errorMessage || 'Mock error');
+                (error as any).code = options.errorCode || grpc.status.INTERNAL;
+                callback(error);
+            } else {
+                callback(null, options.response || { success: true });
+            }
+        }),
+        serverStreamMethod: jest.fn(() => {
+            const stream = new MockStream();
+            if (options.streamError) {
+                process.nextTick(() => stream.emit('error', new Error('Stream error')));
+            } else {
+                process.nextTick(() => {
+                    stream.emit('data', { data: 'test1' });
+                    stream.emit('data', { data: 'test2' });
+                    stream.emit('end');
+                });
+            }
+            return stream;
+        }),
+        clientStreamMethod: jest.fn(() => {
+            const stream = new MockStream();
+            if (options.streamError) {
+                process.nextTick(() => stream.emit('error', new Error('Stream error')));
+            } else {
+                process.nextTick(() => stream.emit('data', { success: true }));
+            }
+            return stream;
+        }),
+        bidiStreamMethod: jest.fn(() => {
+            const stream = new MockStream();
+            if (options.streamError) {
+                process.nextTick(() => stream.emit('error', new Error('Stream error')));
+            } else {
+                stream.on('data', (data: any) => {
+                    process.nextTick(() => stream.emit('data', { echo: data }));
+                });
+                process.nextTick(() => stream.emit('end'));
+            }
+            return stream;
+        }),
+        close: jest.fn(),
+        getChannel: jest.fn(() => ({
+            getConnectivityState: () => 2,
+            close: jest.fn(),
+        })),
+    });
 
     beforeEach(async () => {
-        const mockLogger = {
-            log: jest.fn(),
-            error: jest.fn(),
-            warn: jest.fn(),
-            debug: jest.fn(),
-            verbose: jest.fn(),
-            child: jest.fn().mockReturnThis(),
-        } as any;
+        jest.clearAllMocks();
+        jest.clearAllTimers();
 
         mockProtoService = {
             getProtoDefinition: jest.fn(),
             load: jest.fn(),
             loadService: jest.fn(),
+            onModuleInit: jest.fn(),
+            onModuleDestroy: jest.fn(),
         } as any;
 
         mockOptions = {
@@ -57,9 +165,11 @@ describe('GrpcClientService', () => {
                 level: 'debug',
                 logDetails: true,
             },
+            maxSendMessageSize: 4 * 1024 * 1024,
+            maxReceiveMessageSize: 4 * 1024 * 1024,
         };
 
-        const module: TestingModule = await Test.createTestingModule({
+        module = await Test.createTestingModule({
             providers: [
                 GrpcClientService,
                 {
@@ -70,17 +180,13 @@ describe('GrpcClientService', () => {
                     provide: GrpcProtoService,
                     useValue: mockProtoService,
                 },
-                {
-                    provide: GrpcLogger,
-                    useValue: mockLogger,
-                },
             ],
         }).compile();
 
         service = module.get<GrpcClientService>(GrpcClientService);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         // Ensure cleanup to prevent hanging tests
         if (service && typeof service.onModuleDestroy === 'function') {
             try {
@@ -88,6 +194,9 @@ describe('GrpcClientService', () => {
             } catch (error) {
                 // Ignore cleanup errors in afterEach
             }
+        }
+        if (module) {
+            await module.close();
         }
         jest.clearAllMocks();
     });
@@ -235,6 +344,32 @@ describe('GrpcClientService', () => {
             loggerSpy.mockRestore();
             clearIntervalSpy.mockRestore();
         });
+
+        it('should cancel active streams on destroy and count them', () => {
+            const loggerSpy = jest.spyOn((service as any).logger, 'lifecycle').mockImplementation();
+
+            // Add mock streams with cancel method
+            const mockStream1 = { cancel: jest.fn() };
+            const mockStream2 = { cancel: jest.fn() };
+            const mockStream3 = { cancel: undefined }; // Stream without cancel method
+
+            (service as any).activeStreams.add(mockStream1);
+            (service as any).activeStreams.add(mockStream2);
+            (service as any).activeStreams.add(mockStream3);
+
+            service.onModuleDestroy();
+
+            expect(mockStream1.cancel).toHaveBeenCalled();
+            expect(mockStream2.cancel).toHaveBeenCalled();
+            expect(loggerSpy).toHaveBeenCalledWith(
+                'GrpcClientService shutdown complete',
+                expect.objectContaining({
+                    streamsClosed: 2,
+                    clientsClosed: 0,
+                }),
+            );
+            loggerSpy.mockRestore();
+        });
     });
 
     describe('cleanupStaleClients', () => {
@@ -320,6 +455,58 @@ describe('GrpcClientService', () => {
             getServiceMethods.mockReturnValue(['testMethod']);
         });
 
+        it('should throw error for invalid service name', async () => {
+            await expect(service.create('')).rejects.toThrow(
+                'Service name is required and must be a string',
+            );
+            await expect(service.create(null as any)).rejects.toThrow(
+                'Service name is required and must be a string',
+            );
+            await expect(service.create(123 as any)).rejects.toThrow(
+                'Service name is required and must be a string',
+            );
+        });
+
+        it('should throw error for invalid options', async () => {
+            await expect(service.create('TestService', 'invalid' as any)).rejects.toThrow(
+                'Options must be an object',
+            );
+            await expect(service.create('TestService', null as any)).rejects.toThrow(
+                'Options must be an object',
+            );
+        });
+
+        it('should throw error for invalid URL option', async () => {
+            await expect(service.create('TestService', { url: 123 as any })).rejects.toThrow(
+                'URL option must be a string',
+            );
+        });
+
+        it('should return cached client when available', async () => {
+            const mockClient = { testMethod: jest.fn() };
+            const serviceName = 'TestService';
+            const clientKey = 'TestService:localhost:50051:insecure';
+
+            // Mock proto service to be loaded
+            mockProtoService.getProtoDefinition.mockReturnValue({ TestService: jest.fn() });
+            mockProtoService.load.mockResolvedValue({});
+
+            // Set up cached client
+            (service as any).clients.set(clientKey, {
+                client: mockClient,
+                createdAt: Date.now(),
+                lastUsed: Date.now() - 1000, // 1 second ago
+                config: clientKey,
+            });
+
+            const result = await service.create(serviceName);
+
+            expect(result).toBe(mockClient);
+            // Verify lastUsed was updated
+            const cachedClient = (service as any).clients.get(clientKey);
+            expect(cachedClient.lastUsed).toBeGreaterThan(Date.now() - 100);
+        });
+
         it('should create a client for a service', async () => {
             const mockServiceConstructor = jest.fn().mockReturnValue({
                 testMethod: jest.fn(),
@@ -380,7 +567,9 @@ describe('GrpcClientService', () => {
             mockProtoService.load.mockResolvedValue({});
             mockProtoService.load.mockResolvedValue({});
 
-            await expect(service.create('NonExistentService')).rejects.toThrow('Service lookup failed');
+            await expect(service.create('NonExistentService')).rejects.toThrow(
+                'Service lookup failed',
+            );
         });
 
         it('should use cached client for same service and options', async () => {
@@ -521,7 +710,7 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['streamMethod']);
 
-            const client = await service.create('TestService') as any;
+            const client = (await service.create('TestService')) as any;
 
             expect(client.streamMethod).toBeDefined();
             // Basic client creation test - don't test streaming functionality
@@ -550,7 +739,7 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['unaryMethod']);
 
-            const client = await service.create('TestService', { timeout: 100 }) as any;
+            const client = (await service.create('TestService', { timeout: 100 })) as any;
 
             expect(client.unaryMethod).toBeDefined();
             // Basic client creation test - don't test timeout functionality
@@ -579,7 +768,7 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['unaryMethod']);
 
-            const client = await service.create('TestService') as any;
+            const client = (await service.create('TestService')) as any;
 
             expect(client.unaryMethod).toBeDefined();
             // Basic client creation test - don't test error handling functionality
@@ -650,7 +839,9 @@ describe('GrpcClientService', () => {
             mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
             mockProtoService.load.mockResolvedValue(mockProtoDefinition);
 
-            await expect(service.create('test.invalid.path')).rejects.toThrow('Service lookup failed');
+            await expect(service.create('test.invalid.path')).rejects.toThrow(
+                'Service lookup failed',
+            );
         });
 
         it('should handle option merging with extreme values', () => {
@@ -709,7 +900,7 @@ describe('GrpcClientService', () => {
             createChannelOptions.mockReturnValue({});
             getServiceMethods.mockReturnValue(['streamMethod']);
 
-            const client = await service.create('TestService', { timeout: 100 }) as any;
+            const client = (await service.create('TestService', { timeout: 100 })) as any;
 
             expect(client.streamMethod).toBeDefined();
             // Basic client creation test - don't test streaming error functionality
@@ -772,6 +963,470 @@ describe('GrpcClientService', () => {
             // Should not log error when logErrors is false
             expect(consoleSpy).not.toHaveBeenCalled();
             consoleSpy.mockRestore();
+        });
+    });
+
+    // Tests for uncovered methods - call, serverStream, clientStream, bidiStream
+    describe('call method', () => {
+        beforeEach(() => {
+            const mockServiceConstructor = jest.fn(() => createMockClient());
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+        });
+
+        it('should make successful unary call', async () => {
+            const response = await service.call('TestService', 'testMethod', { test: 'data' });
+            expect(response).toEqual({ success: true });
+        });
+
+        it('should handle method validation failure', async () => {
+            // Mock validateMethod to return false
+            jest.spyOn(service as any, 'validateMethod').mockReturnValue(false);
+
+            await expect(service.call('TestService', 'invalidMethod', {})).rejects.toThrow(
+                'Method invalidMethod not found in service TestService',
+            );
+        });
+
+        it('should handle call errors', async () => {
+            const mockServiceConstructor = jest.fn(() => createMockClient({ shouldFail: true }));
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+
+            await expect(service.call('TestService', 'testMethod', {})).rejects.toThrow(
+                'Mock error',
+            );
+        });
+
+        it('should retry on failure', async () => {
+            let attempts = 0;
+            const mockServiceConstructor = jest.fn(() => ({
+                testMethod: jest.fn((req: any, metadata: any, opts: any, callback?: any) => {
+                    if (typeof opts === 'function') {
+                        callback = opts;
+                        opts = {};
+                    }
+                    attempts++;
+                    if (attempts < 3) {
+                        const error = new Error('Retryable error');
+                        (error as any).code = grpc.status.UNAVAILABLE;
+                        callback(error);
+                    } else {
+                        callback(null, { success: true });
+                    }
+                }),
+                close: jest.fn(),
+            }));
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+
+            const response = await service.call(
+                'TestService',
+                'testMethod',
+                {},
+                { maxRetries: 3, retryDelay: 10 },
+            );
+            expect(response).toEqual({ success: true });
+            expect(attempts).toBe(3);
+        });
+    });
+
+    describe('serverStream method', () => {
+        it('should handle client creation errors', done => {
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Proto error');
+            });
+
+            const stream$ = service.serverStream('TestService', 'serverStreamMethod', {
+                test: 'data',
+            });
+
+            stream$.subscribe({
+                error: error => {
+                    expect(error.message).toBe('Proto error');
+                    done();
+                },
+            });
+        });
+    });
+
+    describe('clientStream method', () => {
+        it('should handle client stream', async () => {
+            const requestSubject = new Subject();
+            const mockServiceConstructor = jest.fn(() => createMockClient());
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            const responsePromise = service.clientStream(
+                'TestService',
+                'clientStreamMethod',
+                requestSubject,
+            );
+
+            // Send some data
+            requestSubject.next({ data: 'chunk1' });
+            requestSubject.next({ data: 'chunk2' });
+            requestSubject.complete();
+
+            const response = await responsePromise;
+            expect(response).toEqual({ success: true });
+        });
+
+        it('should handle client stream errors', async () => {
+            const requestSubject = new Subject();
+            const mockServiceConstructor = jest.fn(() => createMockClient({ streamError: true }));
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            const responsePromise = service.clientStream(
+                'TestService',
+                'clientStreamMethod',
+                requestSubject,
+            );
+            requestSubject.next({ data: 'chunk1' });
+
+            await expect(responsePromise).rejects.toThrow('Stream error');
+        });
+
+        it('should handle request stream errors', async () => {
+            const requestSubject = new Subject();
+            const mockServiceConstructor = jest.fn(() => createMockClient());
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            service.clientStream('TestService', 'clientStreamMethod', requestSubject);
+
+            // Emit error on request stream - should handle gracefully
+            requestSubject.error(new Error('Request error'));
+
+            // Just ensure no unhandled rejection
+            await new Promise(resolve => setTimeout(resolve, 10));
+        });
+    });
+
+    describe('bidiStream method', () => {
+        it('should handle request errors in bidiStream', done => {
+            const requestSubject = new Subject();
+            const mockServiceConstructor = jest.fn(() => createMockClient());
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            const stream$ = service.bidiStream(
+                'TestService',
+                'bidiStreamMethod',
+                requestSubject,
+            );
+
+            stream$.subscribe({
+                error: error => {
+                    expect(error.message).toBe('Request error');
+                    done();
+                },
+            });
+
+            requestSubject.error(new Error('Request error'));
+        });
+    });
+
+    describe('private methods', () => {
+        it('should cleanup stale clients', () => {
+            const mockClient = { close: jest.fn() };
+            const staleTime = Date.now() - 10 * 60 * 1000; // 10 minutes ago
+
+            (service as any).clients.set('stale-key', {
+                client: mockClient,
+                createdAt: staleTime,
+                lastUsed: staleTime,
+                config: 'test',
+            });
+
+            (service as any).cleanupStaleClients();
+
+            expect(mockClient.close).toHaveBeenCalled();
+            expect((service as any).clients.has('stale-key')).toBe(false);
+        });
+
+        it('should handle cleanup errors', () => {
+            const mockClient = {
+                close: jest.fn(() => {
+                    throw new Error('Close failed');
+                }),
+            };
+            const staleTime = Date.now() - 10 * 60 * 1000;
+
+            (service as any).clients.set('stale-key', {
+                client: mockClient,
+                createdAt: staleTime,
+                lastUsed: staleTime,
+                config: 'test',
+            });
+
+            expect(() => (service as any).cleanupStaleClients()).not.toThrow();
+            expect((service as any).clients.has('stale-key')).toBe(false);
+        });
+
+        it('should execute with retry', async () => {
+            let attempts = 0;
+            const mockFn = jest.fn().mockImplementation(async () => {
+                attempts++;
+                if (attempts < 3) {
+                    throw new Error('Retry error');
+                }
+                return 'success';
+            });
+
+            const result = await (service as any).executeWithRetry(mockFn, 3, 10);
+
+            expect(result).toBe('success');
+            expect(attempts).toBe(3);
+        });
+
+        it('should fail after max retries', async () => {
+            const mockFn = jest.fn().mockRejectedValue(new Error('Always fails'));
+
+            await expect((service as any).executeWithRetry(mockFn, 2, 10)).rejects.toThrow(
+                'Always fails',
+            );
+            expect(mockFn).toHaveBeenCalledTimes(3); // Initial + 2 retries
+        });
+
+        it('should generate client key', () => {
+            const options = { service: 'Test', url: 'localhost:50051', secure: false };
+            const key = (service as any).getClientKey('TestService', options);
+            expect(key).toBe('TestService:localhost:50051:insecure');
+        });
+
+        it('should generate config hash', () => {
+            const options = { url: 'localhost:50051', secure: true, timeout: 5000 };
+            const hash = (service as any).getConfigHash(options);
+            expect(hash).toBe(
+                JSON.stringify({
+                    url: 'localhost:50051',
+                    secure: true,
+                    timeout: 5000,
+                    maxRetries: undefined,
+                    retryDelay: undefined,
+                }),
+            );
+        });
+
+        it('should merge client options', () => {
+            const merged = (service as any).mergeClientOptions('TestService', {
+                url: 'custom:50052',
+                secure: true,
+                timeout: 1000,
+            });
+
+            expect(merged.service).toBe('TestService');
+            expect(merged.url).toBe('custom:50052');
+            expect(merged.secure).toBe(true);
+            expect(merged.timeout).toBe(1000);
+            expect(merged.package).toBe(mockOptions.package);
+        });
+
+        it('should find service path recursively', () => {
+            const testService = jest.fn();
+            const packageDef = {
+                nested: {
+                    TestService: testService,
+                },
+            };
+
+            const servicePath = (service as any).findServicePath(packageDef, 'TestService');
+            expect(servicePath).toBe(testService); // Found via recursive search
+
+            const servicePath2 = (service as any).findServicePath(packageDef.nested, 'TestService');
+            expect(servicePath2).toBe(packageDef.nested.TestService);
+        });
+
+        it('should get available service names', () => {
+            const packageDef = {
+                Service1: jest.fn(),
+                nested: {
+                    Service2: jest.fn(),
+                    Service3: 'not a function',
+                },
+            };
+
+            const serviceNames = (service as any).getAvailableServiceNames(packageDef);
+            expect(serviceNames).toContain('Service1');
+            expect(serviceNames).toContain('Service2');
+            expect(serviceNames).not.toContain('Service3');
+        });
+
+        it('should create client with secure credentials', () => {
+            const serviceConstructor = jest.fn();
+            const options = {
+                service: 'TestService',
+                url: 'localhost:50051',
+                secure: true,
+                rootCerts: Buffer.from('root'),
+                privateKey: Buffer.from('key'),
+                certChain: Buffer.from('cert'),
+            };
+
+            (service as any).createClient(serviceConstructor, options);
+
+            expect(grpc.credentials.createSsl).toHaveBeenCalledWith(
+                options.rootCerts,
+                options.privateKey,
+                options.certChain,
+            );
+        });
+
+        it('should create client with insecure credentials', () => {
+            const serviceConstructor = jest.fn();
+            const options = {
+                service: 'TestService',
+                url: 'localhost:50051',
+                secure: false,
+            };
+
+            (service as any).createClient(serviceConstructor, options);
+
+            expect(grpc.credentials.createInsecure).toHaveBeenCalled();
+        });
+
+        it('should validate method successfully', () => {
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: { testMethod: {} },
+            });
+
+            const isValid = (service as any).validateMethod('TestService', 'testMethod');
+            expect(isValid).toBe(true);
+        });
+
+        it('should handle validation with no proto definition', () => {
+            mockProtoService.getProtoDefinition.mockReturnValue(null);
+
+            const isValid = (service as any).validateMethod('TestService', 'testMethod');
+            expect(isValid).toBe(false);
+        });
+
+        it('should handle validation errors', () => {
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Proto error');
+            });
+
+            const isValid = (service as any).validateMethod('TestService', 'testMethod');
+            expect(isValid).toBe(false);
+        });
+
+        it('should call unary method with timeout', async () => {
+            const mockClient = createMockClient();
+            const response = await (service as any).callUnaryMethod(
+                mockClient,
+                'testMethod',
+                { test: 'data' },
+                { timeout: 5000 },
+            );
+
+            expect(response).toEqual({ success: true });
+            expect(mockClient.testMethod).toHaveBeenCalled();
+        });
+
+        it('should call unary method without timeout', async () => {
+            const mockClient = createMockClient();
+            const response = await (service as any).callUnaryMethod(mockClient, 'testMethod', {
+                test: 'data',
+            });
+
+            expect(response).toEqual({ success: true });
+        });
+
+        it('should handle unary method errors', async () => {
+            const mockClient = createMockClient({ shouldFail: true });
+
+            await expect(
+                (service as any).callUnaryMethod(mockClient, 'testMethod', { test: 'data' }),
+            ).rejects.toThrow('Mock error');
+        });
+
+        it('should handle service constructor errors in getServiceConstructor', async () => {
+            mockProtoService.load.mockResolvedValue({});
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Proto not loaded');
+            });
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                'Service lookup failed',
+            );
+        });
+
+        it('should handle findServicePath with null objects', () => {
+            const result = (service as any).findServicePath(null, 'TestService');
+            expect(result).toBeNull();
+
+            const result2 = (service as any).findServicePath('not an object', 'TestService');
+            expect(result2).toBeNull();
+        });
+
+        it('should handle getAvailableServiceNames with null objects', () => {
+            const result = (service as any).getAvailableServiceNames(null);
+            expect(result).toEqual([]);
+
+            const result2 = (service as any).getAvailableServiceNames('not an object');
+            expect(result2).toEqual([]);
+        });
+
+        it('should handle createClient errors', () => {
+            const serviceConstructor = jest.fn(() => {
+                throw new Error('Constructor failed');
+            });
+            const options = {
+                service: 'TestService',
+                url: 'localhost:50051',
+                secure: false,
+            };
+
+            expect(() => (service as any).createClient(serviceConstructor, options)).toThrow(
+                'Failed to create gRPC client for service TestService: Constructor failed',
+            );
+        });
+
+        it('should handle service lookup with not loaded error', async () => {
+            mockProtoService.load.mockResolvedValue({});
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('not loaded yet');
+            });
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                'Service lookup failed: not loaded yet',
+            );
+        });
+
+        it('should handle service lookup with Proto not loaded error', async () => {
+            mockProtoService.load.mockResolvedValue({});
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Proto not loaded');
+            });
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                'Service lookup failed: Proto not loaded',
+            );
+        });
+
+        it('should handle non-constructor service definition', async () => {
+            mockProtoService.load.mockResolvedValue({});
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: 'not a constructor',
+            });
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                "Service 'TestService' not found in proto definition",
+            );
         });
     });
 });
