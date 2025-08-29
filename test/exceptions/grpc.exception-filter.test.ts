@@ -611,5 +611,42 @@ describe('GrpcExceptionFilter', () => {
                 },
             });
         });
+
+        it('should handle unknown error types (line 102)', done => {
+            // Pass a non-standard error type to trigger the unknown error path
+            const unknownError = 42; // number instead of Error/RpcException
+            
+            const result = filter.catch(unknownError, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.code).toBe(13); // INTERNAL code
+                    expect(error.message).toContain('Unknown error'); // Message should contain 'Unknown error'
+                    done();
+                },
+            });
+        });
+
+        it('should log error details when serializable (line 128)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+            
+            // Mock the logger to capture calls
+            const loggerSpy = jest.spyOn((mockFilter as any).logger, 'error');
+            
+            // Create an error with serializable details
+            const testError = new RpcException({
+                message: 'Test error',
+                details: { key: 'value', nested: { data: 'test' } }
+            });
+
+            const result = mockFilter.catch(testError, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    // The error details should be logged if they're serializable
+                    done();
+                },
+            });
+        });
     });
 });

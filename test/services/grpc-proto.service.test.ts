@@ -78,13 +78,13 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
 
     describe('constructor validation', () => {
         it('should throw error if options are not provided', () => {
-            expect(() => new GrpcProtoService(null as any)).toThrow(
-                "Cannot read properties of null (reading 'logging')",
-            );
+            expect(() => new GrpcProtoService(null as any)).toThrow('GRPC_OPTIONS is required');
         });
 
         it('should throw error if options are undefined', () => {
-            expect(() => new GrpcProtoService(undefined as any)).toThrow("Cannot read properties of undefined (reading 'logging')");
+            expect(() => new GrpcProtoService(undefined as any)).toThrow(
+                'GRPC_OPTIONS is required',
+            );
         });
 
         it('should throw error if protoPath is missing', () => {
@@ -437,7 +437,9 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
             const globService = new GrpcProtoService(globOptions);
             mockGlob.mockResolvedValue([]); // No files found
 
-            await expect(globService.load()).rejects.toThrow('No proto files found in /empty/*.proto');
+            await expect(globService.load()).rejects.toThrow(
+                'No proto files found in /empty/*.proto',
+            );
         });
 
         it('should throw error if no proto files found', async () => {
@@ -768,5 +770,70 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
 
             await expect(noLogService.load()).rejects.toThrow('No services loaded successfully');
         });
+    });
+
+    it('should handle loadService when no proto files found', async () => {
+        // Mock findProtoFiles to return empty array
+        jest.spyOn(service as any, 'findProtoFiles').mockResolvedValue([]);
+
+        await expect((service as any).loadService('/test/path')).rejects.toThrow(
+            'Failed to load service /test/path: Failed to load service from /test/path.proto: Service /test/path not found in package test.package',
+        );
+    });
+
+    it('should throw error when package is missing', () => {
+        expect(() => {
+            new GrpcProtoService({ protoPath: '/test.proto' } as any);
+        }).toThrow('package is required and must be a string');
+    });
+
+    it('should throw error when package is not a string', () => {
+        expect(() => {
+            new GrpcProtoService({ protoPath: '/test.proto', package: 123 } as any);
+        }).toThrow('package is required and must be a string');
+    });
+
+    it('should handle load when already loaded and cached', async () => {
+        const mockDefinition = { TestService: {} };
+        (service as any).isLoaded = true;
+        (service as any).protoDefinition = mockDefinition;
+
+        const result = await service.load();
+
+        expect(result).toBe(mockDefinition);
+        expect(mockLoadProto).not.toHaveBeenCalled();
+    });
+
+    it('should handle constructor validation with missing options', () => {
+        expect(() => {
+            new GrpcProtoService(undefined as any);
+        }).toThrow('GRPC_OPTIONS is required');
+    });
+
+    it('should handle loadService with no proto files found', async () => {
+        // Mock findProtoFiles to return empty array
+        jest.spyOn(service as any, 'findProtoFiles').mockResolvedValue([]);
+
+        await expect((service as any).loadService('/test/path')).rejects.toThrow(
+            'Failed to load service /test/path: Failed to load service from /test/path.proto: Service /test/path not found in package test.package',
+        );
+    });
+
+    it('should handle options validation error for missing options', () => {
+        // This test covers line 67: Options validation error
+        expect(() => {
+            new GrpcProtoService(null as any);
+        }).toThrow('GRPC_OPTIONS is required');
+    });
+
+    it('should handle findProtoFiles returning empty array', async () => {
+        // This test covers line 350: No proto files found error
+        // Mock findProtoFiles to return empty array for the loadMultipleProtoFiles path
+        jest.spyOn(service as any, 'findProtoFiles').mockResolvedValue([]);
+
+        // Mock isDirectory to return true so it goes through loadMultipleProtoFiles
+        jest.spyOn(service as any, 'isDirectory').mockReturnValue(true);
+
+        await expect(service.load()).rejects.toThrow('No proto files found in /test/path');
     });
 });

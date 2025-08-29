@@ -4,7 +4,7 @@ import { Module, Controller } from '@nestjs/common';
 import { GrpcModule } from '../src/grpc.module';
 import { GrpcClientService } from '../src/services/grpc-client.service';
 import { GrpcProtoService } from '../src/services/grpc-proto.service';
-import { GrpcOptionsFactory } from '../src/interfaces';
+import { GrpcOptionsFactory, GrpcConsumerOptionsFactory } from '../src/interfaces';
 import {
     GRPC_OPTIONS,
     GRPC_CONTROLLER_METADATA,
@@ -335,6 +335,111 @@ describe('GrpcModule', () => {
             expect(() => {
                 GrpcModule.forConsumerAsync({} as any);
             }).toThrow('One of useFactory, useClass, or useExisting must be provided');
+        });
+
+        it('should create consumer module with useExisting option', async () => {
+            const options = {
+                serviceName: 'TestService',
+                protoPath: '/test/path.proto',
+                package: 'test.package',
+                url: 'localhost:50051',
+            };
+
+            class TestConsumerConfigService implements GrpcConsumerOptionsFactory {
+                createGrpcConsumerOptions() {
+                    return options;
+                }
+            }
+
+            module = await Test.createTestingModule({
+                imports: [
+                    GrpcModule.forConsumerAsync({
+                        useExisting: TestConsumerConfigService,
+                        providers: [TestConsumerConfigService],
+                    }),
+                ],
+            })
+                .overrideProvider(GrpcProtoService)
+                .useValue(mockProtoService)
+                .compile();
+
+            expect(module).toBeDefined();
+            expect(module.get(GrpcClientService)).toBeDefined();
+        });
+
+        it('should create consumer module with useClass option', async () => {
+            const options = {
+                serviceName: 'TestService',
+                protoPath: '/test/path.proto',
+                package: 'test.package',
+                url: 'localhost:50051',
+            };
+
+            class TestConsumerConfigService implements GrpcConsumerOptionsFactory {
+                createGrpcConsumerOptions() {
+                    return options;
+                }
+            }
+
+            module = await Test.createTestingModule({
+                imports: [
+                    GrpcModule.forConsumerAsync({
+                        useClass: TestConsumerConfigService,
+                    }),
+                ],
+            })
+                .overrideProvider(GrpcProtoService)
+                .useValue(mockProtoService)
+                .compile();
+
+            expect(module).toBeDefined();
+            expect(module.get(GrpcClientService)).toBeDefined();
+        });
+    });
+
+    describe('forProviderAsync with useExisting', () => {
+        it('should create module with useExisting option', async () => {
+            const options = {
+                protoPath: '/test/path.proto',
+                package: 'test.package',
+            };
+
+            class TestConfigService implements GrpcOptionsFactory {
+                createGrpcOptions() {
+                    return options;
+                }
+            }
+
+            module = await Test.createTestingModule({
+                imports: [
+                    GrpcModule.forProviderAsync({
+                        useExisting: TestConfigService,
+                        providers: [TestConfigService],
+                    }),
+                ],
+            })
+                .overrideProvider(GrpcProtoService)
+                .useValue(mockProtoService)
+                .compile();
+
+            expect(module).toBeDefined();
+            expect(module.get(GRPC_OPTIONS)).toEqual({
+                ...options,
+            });
+        });
+    });
+
+    describe('validateConsumerOptions', () => {
+        it('should throw error for invalid consumer options object', () => {
+            expect(() => {
+                GrpcModule.forConsumer(null as any);
+            }).toThrow('Consumer options must be a valid object');
+        });
+
+        it('should throw error for invalid consumer options type', () => {
+            expect(() => {
+                GrpcModule.forConsumer('invalid' as any);
+            }).toThrow('Consumer options must be a valid object');
         });
     });
 });

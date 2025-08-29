@@ -35,7 +35,6 @@ function validateArgs(): boolean {
 
     // Allow help and version commands
     if (
-        args.length === 0 ||
         args.includes('--help') ||
         args.includes('-h') ||
         args.includes('--version') ||
@@ -44,40 +43,71 @@ function validateArgs(): boolean {
         return true;
     }
 
-    // Must have at least a command
-    if (args.length === 0 || !['generate'].includes(args[0])) {
+    // If no args, allow (will show help)
+    if (args.length === 0) {
+        return true;
+    }
+
+    // Must be a valid command
+    if (!['generate'].includes(args[0])) {
         return false;
     }
 
     return true;
 }
 
+// Store event listeners for cleanup
+let eventListeners: { event: string; handler: (...args: any[]) => void }[] = [];
+
 /**
  * Setup graceful error handling
  */
 function setupErrorHandling(): void {
-    process.on('uncaughtException', error => {
+    const uncaughtHandler = (error: Error) => {
         logger.error('Fatal error', error);
         process.exit(1);
-    });
+    };
 
-    process.on('unhandledRejection', reason => {
+    const rejectionHandler = (reason: any) => {
         logger.error(
             'Unhandled promise rejection',
             reason instanceof Error ? reason : String(reason),
         );
         process.exit(1);
-    });
+    };
 
-    process.on('SIGTERM', () => {
+    const sigtermHandler = () => {
         logger.lifecycle('Received SIGTERM, shutting down gracefully');
         process.exit(0);
-    });
+    };
 
-    process.on('SIGINT', () => {
+    const sigintHandler = () => {
         logger.lifecycle('Received SIGINT, shutting down gracefully');
         process.exit(0);
+    };
+
+    process.on('uncaughtException', uncaughtHandler);
+    process.on('unhandledRejection', rejectionHandler);
+    process.on('SIGTERM', sigtermHandler);
+    process.on('SIGINT', sigintHandler);
+
+    // Store for cleanup
+    eventListeners = [
+        { event: 'uncaughtException', handler: uncaughtHandler },
+        { event: 'unhandledRejection', handler: rejectionHandler },
+        { event: 'SIGTERM', handler: sigtermHandler },
+        { event: 'SIGINT', handler: sigintHandler },
+    ];
+}
+
+/**
+ * Cleanup function for tests
+ */
+export function cleanup(): void {
+    eventListeners.forEach(({ event, handler }) => {
+        process.removeListener(event, handler);
     });
+    eventListeners = [];
 }
 
 /**
@@ -129,6 +159,12 @@ function initializeCli(): void {
             }
         });
 
+    // Add unknown command handler
+    program.on('command:*', () => {
+        logger.error('Error: Invalid arguments provided');
+        process.exit(1);
+    });
+
     // Parse arguments and handle unknown commands
     try {
         program.parse(process.argv);
@@ -143,5 +179,10 @@ function initializeCli(): void {
     }
 }
 
-// Start the CLI
-initializeCli();
+// Export for testing
+export { initializeCli };
+
+// Start the CLI only if this module is the main module (not during testing)
+if (require.main === module) {
+    initializeCli();
+}

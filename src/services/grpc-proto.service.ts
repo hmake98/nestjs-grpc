@@ -49,7 +49,7 @@ export class GrpcProtoService implements OnModuleInit {
      */
     constructor(@Inject(GRPC_OPTIONS) private readonly options: GrpcOptions) {
         this.logger = new GrpcLogger({
-            ...options.logging,
+            ...(this.options?.logging ?? {}),
             context: 'ProtoLoader',
         });
         this.validateOptions();
