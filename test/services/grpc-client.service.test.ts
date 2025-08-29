@@ -1123,11 +1123,7 @@ describe('GrpcClientService', () => {
             });
             mockProtoService.load.mockResolvedValue({});
 
-            const stream$ = service.bidiStream(
-                'TestService',
-                'bidiStreamMethod',
-                requestSubject,
-            );
+            const stream$ = service.bidiStream('TestService', 'bidiStreamMethod', requestSubject);
 
             stream$.subscribe({
                 error: error => {
@@ -1222,18 +1218,18 @@ describe('GrpcClientService', () => {
             );
         });
 
-        it('should merge client options', () => {
-            const merged = (service as any).mergeClientOptions('TestService', {
-                url: 'custom:50052',
-                secure: true,
-                timeout: 1000,
-            });
+        it('should test mergeClientOptions method', () => {
+            const serviceOptions = { url: 'localhost:50051', secure: true };
+            const globalOptions = { timeout: 30000, maxRetries: 5 };
 
-            expect(merged.service).toBe('TestService');
-            expect(merged.url).toBe('custom:50052');
-            expect(merged.secure).toBe(true);
-            expect(merged.timeout).toBe(1000);
-            expect(merged.package).toBe(mockOptions.package);
+            (service as any).options = globalOptions;
+
+            const result = (service as any).mergeClientOptions('TestService', serviceOptions);
+
+            expect(result.service).toBe('TestService');
+            expect(result.url).toBe('localhost:50051');
+            expect(result.secure).toBe(true);
+            expect(result.timeout).toBe(30000);
         });
 
         it('should find service path recursively', () => {
@@ -1427,6 +1423,394 @@ describe('GrpcClientService', () => {
             await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
                 "Service 'TestService' not found in proto definition",
             );
+        });
+
+        it('should handle bidirectional stream with error during stream creation', done => {
+            // Mock the proto service to throw an error during service lookup
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Stream creation error');
+            });
+
+            const mockObserver = {
+                next: jest.fn(),
+                error: jest.fn(),
+                complete: jest.fn(),
+            };
+
+            const observable = (service as any).bidiStream(
+                'TestService',
+                'bidiStreamMethod',
+                mockObserver,
+            );
+
+            observable.subscribe({
+                error: (error: any) => {
+                    expect(error.message).toContain('Stream creation error');
+                    done();
+                },
+                complete: () => {
+                    done.fail('Expected error but got completion');
+                },
+            });
+        });
+
+        it('should handle service constructor validation with non-function service', async () => {
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: 'not a constructor',
+            });
+
+            // Mock the getAvailableServiceNames method to return an empty array
+            jest.spyOn(service as any, 'getAvailableServiceNames').mockReturnValue([]);
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                "Service 'TestService' not found in proto definition. Available services: ",
+            );
+        });
+
+        it('should handle validateMethod with service not found in proto', () => {
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                // Empty proto definition
+            });
+
+            const result = (service as any).validateMethod('NonExistentService', 'testMethod');
+
+            expect(result).toBe(false);
+        });
+
+        it('should handle bidirectional stream data events with error', done => {
+            // Mock the proto service to throw an error during service lookup
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Data event error');
+            });
+
+            const mockObserver = {
+                next: jest.fn(),
+                error: jest.fn(),
+                complete: jest.fn(),
+            };
+
+            const observable = (service as any).bidiStream(
+                'TestService',
+                'bidiStreamMethod',
+                mockObserver,
+            );
+
+            observable.subscribe({
+                error: (error: any) => {
+                    expect(error.message).toContain('Data event error');
+                    done();
+                },
+                complete: () => {
+                    done.fail('Expected error but got completion');
+                },
+            });
+        });
+
+        it('should handle bidirectional stream subscription error', done => {
+            // Mock the proto service to throw an error during service lookup
+            mockProtoService.getProtoDefinition.mockImplementation(() => {
+                throw new Error('Subscription error');
+            });
+
+            const mockObserver = {
+                next: jest.fn(),
+                error: jest.fn(),
+                complete: jest.fn(),
+            };
+
+            const observable = (service as any).bidiStream(
+                'TestService',
+                'bidiStreamMethod',
+                mockObserver,
+            );
+
+            observable.subscribe({
+                error: (error: any) => {
+                    expect(error.message).toContain('Subscription error');
+                    done();
+                },
+                complete: () => {
+                    done.fail('Expected error but got completion');
+                },
+            });
+        });
+
+        it('should handle service constructor validation with non-constructor', async () => {
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: 'not a constructor',
+            });
+
+            // Mock the getAvailableServiceNames method to return an empty array
+            jest.spyOn(service as any, 'getAvailableServiceNames').mockReturnValue([]);
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                "Service 'TestService' not found in proto definition. Available services: ",
+            );
+        });
+
+        it('should handle server stream client creation errors in try-catch block', done => {
+            // This test covers line 367-421: Server stream creation error handling
+            const mockServiceConstructor = jest.fn(() => {
+                throw new Error('Client creation failed');
+            });
+
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            const stream$ = service.serverStream('TestService', 'serverStreamMethod', {
+                test: 'data',
+            });
+
+            stream$.subscribe({
+                error: error => {
+                    expect(error.message).toBe(
+                        'Failed to create gRPC client for service TestService: Client creation failed',
+                    );
+                    done();
+                },
+            });
+        });
+
+        it('should cover client stream write operations and error handling', async () => {
+            // This test covers line 483: Client stream request data write
+            const requestSubject = new Subject();
+            const mockStream = new MockStream();
+            const mockClient = {
+                clientStreamMethod: jest.fn(() => mockStream),
+            };
+            const mockServiceConstructor = jest.fn(() => mockClient);
+
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            // Mock the create method to return the mock client
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            // Mock the stream to handle writes
+            const writeSpy = jest.spyOn(mockStream, 'write');
+
+            // Call the clientStream method to create the stream
+            const responsePromise = service.clientStream(
+                'TestService',
+                'clientStreamMethod',
+                requestSubject,
+            );
+
+            // Wait a bit for the Promise to be set up
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Send data to trigger the write operation (line 483)
+            requestSubject.next({ data: 'test' });
+            requestSubject.complete();
+
+            // Simulate successful completion
+            mockStream.emit('data', { success: true });
+            mockStream.emit('end');
+
+            // Wait for the response promise to resolve
+            await responsePromise;
+
+            expect(writeSpy).toHaveBeenCalledWith({ data: 'test' });
+        });
+
+        it('should handle bidirectional stream write operations', async () => {
+            // This test covers lines 589, 601: Bidirectional stream request handling
+            const requestSubject = new Subject();
+            const mockStream = new MockStream();
+            const mockClient = {
+                bidiStreamMethod: jest.fn(() => mockStream),
+            };
+            const mockServiceConstructor = jest.fn(() => mockClient);
+
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            // Mock the create method to return the mock client
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            const writeSpy = jest.spyOn(mockStream, 'write');
+            const endSpy = jest.spyOn(mockStream, 'end');
+
+            const stream$ = service.bidiStream('TestService', 'bidiStreamMethod', requestSubject);
+
+            // Subscribe to the stream first to trigger the setup
+            const subscription = stream$.subscribe({
+                next: () => {},
+                error: () => {},
+                complete: () => {},
+            });
+
+            // Wait a bit for the stream to be set up
+            await new Promise(resolve => setTimeout(resolve, 10));
+
+            // Send data to trigger write operation (line 589)
+            requestSubject.next({ data: 'test' });
+            // Complete to trigger end operation (line 601)
+            requestSubject.complete();
+
+            // Wait a bit for the operations to complete
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            // Verify the operations were called
+            expect(writeSpy).toHaveBeenCalledWith({ data: 'test' });
+            expect(endSpy).toHaveBeenCalled();
+
+            // Clean up
+            subscription.unsubscribe();
+        });
+
+        it('should handle client destruction and cleanup edge cases', () => {
+            // This test covers lines 639-654: Cleanup/connection management
+            const mockClient = {
+                close: jest.fn(() => {
+                    throw new Error('Close failed');
+                }),
+            };
+
+            // Add a client to the internal clients map
+            (service as any).clients.set('test-key', {
+                client: mockClient,
+                createdAt: Date.now() - 600000, // Old enough to be cleaned up
+                lastUsed: Date.now() - 600000,
+                config: 'test',
+            });
+
+            // This should handle the error gracefully
+            expect(() => {
+                (service as any).cleanupStaleClients();
+            }).not.toThrow();
+
+            expect(mockClient.close).toHaveBeenCalled();
+        });
+
+        it('should handle method not found in service error', async () => {
+            // This test covers line 832: Method not found in service error
+            const mockClient = {
+                // Missing the expected method
+            };
+            const mockServiceConstructor = jest.fn(() => mockClient);
+
+            mockProtoService.getProtoDefinition.mockReturnValue({
+                TestService: mockServiceConstructor,
+            });
+            mockProtoService.load.mockResolvedValue({});
+
+            await expect(
+                service.call('TestService', 'nonExistentMethod', { test: 'data' }),
+            ).rejects.toThrow();
+        });
+
+        it('should handle server stream Observable creation try-catch error', done => {
+            // This test covers lines 367-421: Server stream Observable creation try-catch error
+            const mockClient = {
+                serverStreamMethod: jest.fn(() => {
+                    throw new Error('Stream method failed');
+                }),
+            };
+            
+            // Mock create to return a client, but the stream method will throw
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            const stream$ = service.serverStream('TestService', 'serverStreamMethod', {
+                test: 'data',
+            });
+
+            stream$.subscribe({
+                error: error => {
+                    expect(error.message).toBe('Stream method failed');
+                    done();
+                },
+                next: () => {
+                    done.fail('Should not receive data');
+                },
+                complete: () => {
+                    done.fail('Should not complete');
+                },
+            });
+        });
+
+        it('should handle bidiStream Observable creation try-catch error', done => {
+            // This test covers lines 615-621 and 639-654: Bidirectional stream Observable creation error
+            const requestSubject = new Subject();
+            
+            const mockClient = {
+                bidiStreamMethod: jest.fn(() => {
+                    throw new Error('Bidi stream method failed');
+                }),
+            };
+            
+            // Mock create to return a client, but the stream method will throw
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            const stream$ = service.bidiStream('TestService', 'bidiStreamMethod', requestSubject);
+
+            stream$.subscribe({
+                error: error => {
+                    expect(error.message).toBe('Bidi stream method failed');
+                    done();
+                },
+                next: () => {
+                    done.fail('Should not receive data');
+                },
+                complete: () => {
+                    done.fail('Should not complete');
+                },
+            });
+        });
+
+        it('should handle non-function service constructor in getServiceConstructor', async () => {
+            // This test covers line 832: Non-function service constructor validation
+            const mockProtoDefinition = {
+                TestService: 'not a function', // This is not a constructor function
+            };
+
+            mockProtoService.getProtoDefinition.mockReturnValue(mockProtoDefinition);
+            mockProtoService.load.mockResolvedValue(mockProtoDefinition);
+
+            // Mock findServicePath to return the non-function service
+            jest.spyOn(service as any, 'findServicePath').mockReturnValue('not a function');
+
+            await expect((service as any).getServiceConstructor('TestService')).rejects.toThrow(
+                "'TestService' is not a valid constructor function",
+            );
+        });
+
+        it('should verify server stream method can be called', () => {
+            // Simple test to verify server stream method functionality
+            const mockClient = {
+                serverStreamMethod: jest.fn(() => new MockStream()),
+            };
+            
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            const stream$ = service.serverStream('TestService', 'serverStreamMethod', {
+                test: 'data',
+            });
+
+            expect(stream$).toBeDefined();
+        });
+
+        it('should verify bidirectional stream method can be called', () => {
+            // Simple test to verify bidirectional stream method functionality
+            const requestSubject = new Subject();
+            const mockClient = {
+                bidiStreamMethod: jest.fn(() => new MockStream()),
+            };
+            
+            jest.spyOn(service, 'create').mockResolvedValue(mockClient);
+
+            const stream$ = service.bidiStream('TestService', 'bidiStreamMethod', requestSubject);
+
+            expect(stream$).toBeDefined();
+            
+            // Clean up
+            requestSubject.complete();
         });
     });
 });

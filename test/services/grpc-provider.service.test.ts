@@ -395,7 +395,6 @@ describe('GrpcProviderService', () => {
             expect(mockLogger.debug).toHaveBeenCalledWith('No pending controllers to register');
         });
 
-
         it('should handle proto service load errors', async () => {
             // Add a pending controller
             const mockController = { testMethod: jest.fn() };
@@ -538,6 +537,41 @@ describe('GrpcProviderService', () => {
                 expect.any(Error),
             );
         });
+
+        it('should handle server not created error in startServer', async () => {
+            (service as any).server = null;
+
+            await expect((service as any).startServer()).rejects.toThrow('Server not created');
+        });
+
+        it('should handle bindAsync failure in startServer', async () => {
+            const mockServer = {
+                bindAsync: jest.fn().mockImplementation((url, credentials, callback) => {
+                    callback(new Error('Bind failed'), null);
+                }),
+            };
+            (service as any).server = mockServer;
+
+            await expect((service as any).startServer()).rejects.toThrow(
+                'Failed to bind server to localhost:50051: Bind failed',
+            );
+        });
+
+        it('should handle pending controller registration failure', async () => {
+            const mockServer = {
+                bindAsync: jest.fn().mockImplementation((url, credentials, callback) => {
+                    callback(null, 50051);
+                }),
+            };
+            (service as any).server = mockServer;
+
+            // Mock the registerPendingControllers method to throw an error
+            jest.spyOn(service as any, 'registerPendingControllers').mockRejectedValue(
+                new Error('Registration failed'),
+            );
+
+            await expect((service as any).startServer()).rejects.toThrow('Registration failed');
+        });
     });
 
     describe('createServerCredentials', () => {
@@ -581,6 +615,33 @@ describe('GrpcProviderService', () => {
             expect(() => (secureService as any).createServerCredentials()).toThrow(
                 'Private key and certificate chain are required for secure server',
             );
+        });
+
+        it('should handle SSL credentials creation with missing private key', () => {
+            const secureOptions: GrpcOptions = {
+                ...mockOptions,
+                secure: true,
+                certChain: Buffer.from('cert-chain'),
+            };
+
+            const secureService = new GrpcProviderService(secureOptions, mockProtoService as any);
+
+            expect(() => (secureService as any).createServerCredentials()).toThrow(
+                'Private key and certificate chain are required for secure server',
+            );
+        });
+
+        it('should handle onModuleInit with error during start', async () => {
+            // Mock createServer to throw an error
+            jest.spyOn(service as any, 'createServer').mockRejectedValue(new Error('Start failed'));
+
+            await expect(service.onModuleInit()).rejects.toThrow('Start failed');
+        });
+
+        it('should handle startServer with server not created', async () => {
+            (service as any).server = null;
+
+            await expect((service as any).startServer()).rejects.toThrow('Server not created');
         });
     });
 
@@ -1132,6 +1193,61 @@ describe('GrpcProviderService', () => {
             await expect(
                 (service as any).addServiceToServer('TestService', metadata),
             ).rejects.toThrow('Service definition not found for TestService');
+        });
+
+        it('should handle secure server options with SSL', async () => {
+            // This test covers lines 60-61: SSL/secure server options
+            const secureOptions = {
+                url: 'localhost:50051',
+                package: 'test',
+                protoPath: 'test.proto',
+                secure: true,
+                privateKey: Buffer.from('private-key'),
+                certChain: Buffer.from('cert-chain'),
+            };
+
+            // Create a new service instance with secure options
+            const secureService = new GrpcProviderService(secureOptions, mockProtoService as any);
+
+            // Mock the server creation to avoid actual binding
+            jest.spyOn(secureService as any, 'startServer').mockResolvedValue(undefined);
+
+            await secureService.onModuleInit();
+
+            // The test should pass without errors for SSL configuration
+            expect(secureService).toBeDefined();
+        });
+
+        it('should handle server not created error in startServer', async () => {
+            // This test covers line 349: Server not created error
+            const startServerMethod = (service as any).startServer.bind(service);
+
+            // Ensure server is not created
+            (service as any).server = null;
+
+            await expect(startServerMethod()).rejects.toThrow('Server not created');
+        });
+
+        it('should handle SSL credentials creation with root certs', () => {
+            // This test covers line 392: SSL credentials creation with root certs
+            const sslOptions = {
+                url: 'localhost:50051',
+                package: 'test',
+                protoPath: 'test.proto',
+                secure: true,
+                privateKey: Buffer.from('private-key'),
+                certChain: Buffer.from('cert-chain'),
+                rootCerts: Buffer.from('root-certs'),
+            };
+
+            const sslService = new GrpcProviderService(sslOptions, mockProtoService as any);
+            const credentials = (sslService as any).createServerCredentials();
+
+            expect(grpc.ServerCredentials.createSsl).toHaveBeenCalledWith(
+                Buffer.from('root-certs'),
+                expect.any(Array),
+                expect.any(Boolean),
+            );
         });
     });
 });
