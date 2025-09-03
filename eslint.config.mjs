@@ -49,6 +49,20 @@ const baseTypeScriptRules = {
             minimumDescriptionLength: 5,
         },
     ],
+    '@typescript-eslint/no-floating-promises': 'error',
+    '@typescript-eslint/await-thenable': 'error',
+    '@typescript-eslint/no-misused-promises': 'error',
+    '@typescript-eslint/require-await': 'warn',
+    '@typescript-eslint/return-await': 'error',
+    '@typescript-eslint/consistent-type-imports': [
+        'error',
+        {
+            prefer: 'type-imports',
+            disallowTypeAnnotations: false,
+        },
+    ],
+    '@typescript-eslint/consistent-type-exports': 'error',
+    '@typescript-eslint/no-import-type-side-effects': 'error',
 
     // General JavaScript/TypeScript rules
     'no-unused-vars': 'off', // Use TypeScript version instead
@@ -61,17 +75,35 @@ const baseTypeScriptRules = {
     'prefer-template': 'error',
     'object-shorthand': 'error',
     'no-duplicate-imports': 'error',
+    'no-return-await': 'off', // Use TypeScript version instead
 
     // Import rules
     'import/order': [
         'error',
         {
-            groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index', 'type'],
+            groups: [
+                'builtin',
+                'external',
+                'internal',
+                'parent',
+                'sibling',
+                'index',
+                'type',
+                'object',
+                'unknown',
+            ],
             'newlines-between': 'always',
             alphabetize: {
                 order: 'asc',
                 caseInsensitive: true,
             },
+            pathGroups: [
+                {
+                    pattern: '@/**',
+                    group: 'internal',
+                    position: 'after',
+                },
+            ],
         },
     ],
     'import/no-unresolved': 'error',
@@ -80,6 +112,8 @@ const baseTypeScriptRules = {
     'import/no-deprecated': 'warn',
     'import/newline-after-import': 'error',
     'import/no-duplicates': 'error',
+    'import/no-relative-parent-imports': 'off',
+    'import/no-relative-packages': 'error',
 
     // Prettier integration
     'prettier/prettier': [
@@ -111,6 +145,8 @@ const baseTypeScriptConfig = {
             },
         },
         globals: {
+            ...globals.node,
+            ...globals.es2022,
             NodeJS: 'readonly',
             Buffer: 'readonly',
             process: 'readonly',
@@ -161,6 +197,7 @@ export default [
             '**/*.min.js',
             '**/*.bundle.js',
             'bin/nestjs-grpc.js', // Ignore the binary file
+            '**/*.d.ts',
         ],
     },
 
@@ -180,8 +217,8 @@ export default [
             '@typescript-eslint/await-thenable': 'error',
             '@typescript-eslint/no-misused-promises': 'error',
             '@typescript-eslint/require-await': 'warn',
-            'no-return-await': 'off',
             '@typescript-eslint/return-await': 'error',
+            'import/no-relative-parent-imports': 'off',
         },
     },
 
@@ -195,6 +232,7 @@ export default [
             'no-console': 'off', // Allow console in CLI
             '@typescript-eslint/no-floating-promises': 'warn',
             'import/no-unused-modules': 'off', // CLI modules might be used externally
+            'import/no-relative-parent-imports': 'off', // CLI might need relative imports
         },
     },
 
@@ -220,6 +258,9 @@ export default [
                 afterEach: 'readonly',
                 beforeAll: 'readonly',
                 afterAll: 'readonly',
+                vi: 'readonly',
+                test: 'readonly',
+                suite: 'readonly',
             },
         },
         plugins: {
@@ -237,7 +278,10 @@ export default [
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-non-null-assertion': 'off',
             '@typescript-eslint/no-empty-function': 'off',
+            '@typescript-eslint/no-floating-promises': 'off',
+            '@typescript-eslint/require-await': 'off',
             'import/no-unused-modules': 'off',
+            'import/no-relative-parent-imports': 'off',
             'no-console': 'off',
         },
     },
@@ -250,6 +294,7 @@ export default [
             ecmaVersion: 'latest',
             sourceType: 'module',
             globals: {
+                ...globals.node,
                 console: 'readonly',
                 process: 'readonly',
                 __dirname: 'readonly',
@@ -277,6 +322,7 @@ export default [
             ecmaVersion: 'latest',
             sourceType: 'script', // Binary files use CommonJS
             globals: {
+                ...globals.node,
                 console: 'readonly',
                 process: 'readonly',
                 __dirname: 'readonly',

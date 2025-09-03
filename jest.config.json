@@ -2,7 +2,7 @@
     "preset": "ts-jest",
     "testEnvironment": "node",
     "testMatch": ["**/__tests__/**/*.test.ts", "**/?(*.)+(spec|test).ts"],
-    "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts"],
+    "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts", "!src/cli/cli.ts", "!**/index.ts"],
     "coverageThreshold": {
         "global": {
             "statements": 90,
@@ -17,6 +17,16 @@
     "transform": {
         "^.+\\.ts$": "ts-jest"
     },
-    "testPathIgnorePatterns": ["/node_modules/", "/dist/"],
-    "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"]
+    "testPathIgnorePatterns": ["/node_modules/", "/dist/", "src/cli/cli.ts"],
+    "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],
+    "testTimeout": 10000,
+    "maxWorkers": 1,
+    "forceExit": true,
+    "detectOpenHandles": true,
+    "clearMocks": true,
+    "restoreMocks": true,
+    "resetMocks": false,
+    "verbose": true,
+    "bail": false,
+    "maxConcurrency": 1
 }

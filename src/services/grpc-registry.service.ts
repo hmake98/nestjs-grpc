@@ -31,20 +31,16 @@ export class GrpcRegistryService implements OnModuleInit {
      * Lifecycle hook called after module initialization.
      * Processes any pending controller registrations.
      */
-    async onModuleInit(): Promise<void> {
+    onModuleInit(): void {
         this.logger.lifecycle('Processing pending controller registrations');
-        await this.processPendingRegistrations();
+        this.processPendingRegistrations();
     }
 
     /**
      * Registers a controller instance with its metadata.
      * If the server is not ready, queues the registration for later processing.
      */
-    async registerController(
-        serviceName: string,
-        instance: any,
-        metadata: ControllerMetadata,
-    ): Promise<void> {
+    registerController(serviceName: string, instance: any, metadata: ControllerMetadata): void {
         try {
             this.logger.debug(`Registering controller: ${serviceName}`);
 
@@ -52,7 +48,7 @@ export class GrpcRegistryService implements OnModuleInit {
             this.pendingRegistrations.set(serviceName, { instance, metadata });
 
             // Always register with provider service - it will handle pending state
-            await this.providerService.registerController(serviceName, instance, metadata);
+            this.providerService.registerController(serviceName, instance, metadata);
         } catch (error) {
             this.logger.error(`Failed to register controller ${serviceName}`, error);
             throw error;
@@ -76,7 +72,7 @@ export class GrpcRegistryService implements OnModuleInit {
     /**
      * Processes all pending controller registrations
      */
-    private async processPendingRegistrations(): Promise<void> {
+    private processPendingRegistrations(): void {
         if (this.isProcessingRegistrations || this.pendingRegistrations.size === 0) {
             return;
         }
@@ -90,7 +86,7 @@ export class GrpcRegistryService implements OnModuleInit {
 
             for (const [serviceName, { instance, metadata }] of registrations) {
                 try {
-                    await this.providerService.registerController(serviceName, instance, metadata);
+                    this.providerService.registerController(serviceName, instance, metadata);
                     successCount++;
                 } catch (error) {
                     this.logger.error(

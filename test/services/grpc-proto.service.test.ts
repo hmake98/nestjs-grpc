@@ -511,6 +511,16 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
 
             await expect(service.load()).rejects.toThrow('Error finding proto files with pattern');
         });
+
+        it('should throw error when no proto files found in directory for loadService', async () => {
+            // Mock directory path so it goes through loadServiceFromMultipleFiles
+            mockFs.statSync.mockReturnValue({ isDirectory: () => true } as any);
+            
+            // Mock empty directory - this will hit line 350
+            jest.spyOn(service as any, 'findProtoFiles').mockResolvedValue([]);
+
+            await expect(service.loadService('TestService')).rejects.toThrow('No proto files found in');
+        });
     });
 
     describe('loadService method', () => {

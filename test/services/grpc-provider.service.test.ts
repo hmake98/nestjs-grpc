@@ -1249,5 +1249,91 @@ describe('GrpcProviderService', () => {
                 expect.any(Boolean),
             );
         });
+
+        it('should handle SSL credentials creation without root certs', () => {
+            // This test covers line 392: SSL credentials creation with null root certs fallback
+            const sslOptions = {
+                url: 'localhost:50051',
+                package: 'test',
+                protoPath: 'test.proto',
+                secure: true,
+                privateKey: Buffer.from('private-key'),
+                certChain: Buffer.from('cert-chain'),
+                // no rootCerts specified
+            };
+
+            const sslService = new GrpcProviderService(sslOptions, mockProtoService as any);
+            const credentials = (sslService as any).createServerCredentials();
+
+            expect(grpc.ServerCredentials.createSsl).toHaveBeenCalledWith(
+                null, // This covers line 392 fallback
+                expect.any(Array),
+                expect.any(Boolean),
+            );
+        });
+
+        it('should handle server with undefined url option', async () => {
+            // Test with undefined url to cover lines 60-61 and 349 fallback
+            const optionsWithoutUrl = {
+                package: 'test',
+                protoPath: 'test.proto',
+                // url is undefined
+            };
+
+            const serviceWithUndefinedUrl = new GrpcProviderService(
+                optionsWithoutUrl,
+                mockProtoService as any,
+            );
+
+            // Mock successful bindAsync
+            mockGrpcServer.bindAsync.mockImplementation((url, credentials, callback) => {
+                callback(null, 50051);
+            });
+
+            await serviceWithUndefinedUrl.onModuleInit();
+
+            // Verify it uses the default URL (covers lines 60-61 and 349)
+            expect(mockGrpcServer.bindAsync).toHaveBeenCalledWith(
+                'localhost:50051', // Default fallback
+                expect.any(Object),
+                expect.any(Function),
+            );
+        });
+
+        it('should handle proto service load timeout', async () => {
+            // This test covers line 1493: setTimeout timeout in registerPendingControllers
+            await (service as any).createServer();
+
+            // Add a pending controller
+            const mockController = { testMethod: jest.fn() };
+            const mockMetadata: ControllerMetadata = {
+                methods: new Map([['testMethod', { methodName: 'testMethod' }]]),
+                serviceName: 'TestService',
+            };
+
+            await service.registerController('TestService', mockController, mockMetadata);
+
+            // Mock proto service to never resolve (simulate timeout)
+            mockProtoService.load.mockReturnValue(new Promise(() => {})); // Never resolves
+
+            // Use Jest's timer mocking to immediately trigger the timeout
+            jest.useFakeTimers();
+
+            try {
+                const registerPromise = (service as any).registerPendingControllers();
+
+                // Fast-forward time to trigger the timeout
+                jest.advanceTimersByTime(30000);
+
+                await registerPromise;
+
+                expect(mockLogger.error).toHaveBeenCalledWith(
+                    'Failed to load proto service',
+                    expect.any(Error),
+                );
+            } finally {
+                jest.useRealTimers();
+            }
+        });
     });
 });

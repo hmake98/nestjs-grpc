@@ -56,7 +56,17 @@ function validateOptions(options: GenerateCommandOptions): void {
  */
 function normalizeProtoPath(protoPath: string, silent: boolean): string {
     try {
-        const isDirectory = existsSync(protoPath) && statSync(protoPath).isDirectory();
+        if (!existsSync(protoPath)) {
+            return protoPath; // Let findProtoFiles handle non-existent paths
+        }
+
+        const stats = statSync(protoPath);
+
+        if (!stats.isFile() && !stats.isDirectory()) {
+            throw new Error(`Proto path must be a file or directory: ${protoPath}`);
+        }
+
+        const isDirectory = stats.isDirectory();
 
         if (isDirectory && !protoPath.endsWith('/**/*.proto')) {
             const normalizedPath = protoPath.endsWith('/') ? protoPath : `${protoPath}/`;
@@ -220,7 +230,7 @@ async function generateTypesForFile(
     protoFile: string,
     outputDir: string,
     typeOptions: any,
-    silent = false,
+    silent: boolean,
 ): Promise<void> {
     try {
         if (!silent) {
@@ -250,15 +260,16 @@ async function generateTypesForFile(
             });
         }
     } catch (error) {
-        // Log error but don't throw to allow other files to process
+        // Log error and rethrow to indicate processing failure
         logger.error(`Error processing ${protoFile}`, error);
+        throw error;
     }
 }
 
 /**
  * Main command to generate TypeScript definitions from proto files
  */
-export async function generateCommand(options: GenerateCommandOptions): Promise<void> {
+export async function generateCommand(options: GenerateCommandOptions): Promise<number | void> {
     try {
         // Validate input options
         validateOptions(options);
@@ -270,7 +281,8 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         const protoFiles = findProtoFiles(normalizedProtoPath);
 
         if (protoFiles.length === 0) {
-            throw new Error(`No proto files found matching pattern: ${normalizedProtoPath}`);
+            console.error(`No proto files found matching pattern: ${normalizedProtoPath}`);
+            return 1;
         }
 
         if (!options.silent) {
@@ -279,6 +291,9 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         // Create type generation options
         const typeOptions = createTypeOptions(options);
+
+        // Ensure output directory exists
+        ensureOutputDirectory(options.output, Boolean(options.silent));
 
         // Process each proto file
         let processedCount = 0;
@@ -307,14 +322,17 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         }
 
         if (processedCount === 0) {
-            throw new Error('No files were processed successfully');
+            console.error('No files were processed successfully');
+            return 1;
         }
 
         if (errorCount > 0 && !options.silent) {
             logger.warn(`Warning: ${errorCount} files failed to process`);
         }
+
+        return 0;
     } catch (error) {
-        console.error('Generation failed:', error.message);
-        throw error;
+        console.error(error.message);
+        return 1;
     }
 }

@@ -1,6 +1,6 @@
-import { Logger, LogLevel } from '@nestjs/common';
+import { Logger, type LogLevel } from '@nestjs/common';
 
-import { GrpcLoggerOptions } from '../interfaces';
+import type { GrpcLoggerOptions } from '../interfaces';
 
 /**
  * Centralized logging utility for the gRPC module with level-based filtering,

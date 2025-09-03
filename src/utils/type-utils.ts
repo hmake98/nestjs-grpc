@@ -1,4 +1,4 @@
-import * as protobuf from 'protobufjs';
+import type * as protobuf from 'protobufjs';
 
 /**
  * Type definition for gRPC metadata
@@ -287,33 +287,21 @@ export function generateTypeDefinitions(root: protobuf.Root, options?: TypeOptio
                 return;
             }
 
-            if (
-                (protobuf.Type && nested instanceof protobuf.Type) ||
-                nested.constructor?.name === 'Type'
-            ) {
+            if (nested.constructor?.name === 'Type') {
                 typeDefinitions += `${getMessageDefinition(nested as protobuf.Type, options)}\n`;
                 // Process nested messages
                 if ((nested as any).nestedArray) {
                     processNamespace(nested as protobuf.NamespaceBase, fullName);
                 }
-            } else if (
-                (protobuf.Service && nested instanceof protobuf.Service) ||
-                nested.constructor?.name === 'Service'
-            ) {
+            } else if (nested.constructor?.name === 'Service') {
                 // Only include client interface if explicitly enabled
                 if (options?.includeClientInterfaces !== false) {
                     typeDefinitions += `${getServiceClientDefinition(nested as protobuf.Service, options)}\n`;
                 }
                 typeDefinitions += `${getServiceInterfaceDefinition(nested as protobuf.Service, options)}\n`;
-            } else if (
-                (protobuf.Enum && nested instanceof protobuf.Enum) ||
-                nested.constructor?.name === 'Enum'
-            ) {
+            } else if (nested.constructor?.name === 'Enum') {
                 typeDefinitions += `${getEnumDefinition(nested as protobuf.Enum, options)}\n`;
-            } else if (
-                (protobuf.Namespace && nested instanceof protobuf.Namespace) ||
-                nested.constructor?.name === 'Namespace'
-            ) {
+            } else if (nested.constructor?.name === 'Namespace') {
                 if ((nested as any).nestedArray) {
                     processNamespace(nested as protobuf.NamespaceBase, fullName);
                 }

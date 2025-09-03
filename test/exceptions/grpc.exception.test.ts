@@ -1,11 +1,11 @@
 import { Metadata } from '@grpc/grpc-js';
-import { 
-    GrpcException, 
-    GrpcConsumerException, 
+import {
+    GrpcException,
+    GrpcConsumerException,
     GrpcConsumerErrorHandler,
     getGrpcStatusDescription,
     httpStatusToGrpcStatus,
-    RETRYABLE_STATUS_CODES
+    RETRYABLE_STATUS_CODES,
 } from '../../src/exceptions/grpc.exception';
 import { GrpcErrorCode } from '../../src/constants';
 import { GrpcConsumerError } from '../../src/interfaces';
@@ -148,34 +148,43 @@ describe('GrpcException', () => {
         });
 
         it('should throw error for invalid metadata object type', () => {
-            expect(() => new GrpcException({
-                code: GrpcErrorCode.OK,
-                message: 'Test',
-                metadata: [] as any
-            })).toThrow('Metadata must be an object');
+            expect(
+                () =>
+                    new GrpcException({
+                        code: GrpcErrorCode.OK,
+                        message: 'Test',
+                        metadata: [] as any,
+                    }),
+            ).toThrow('Metadata must be an object');
 
-            expect(() => new GrpcException({
-                code: GrpcErrorCode.OK,
-                message: 'Test',
-                metadata: 'invalid' as any
-            })).toThrow('Metadata must be an object');
+            expect(
+                () =>
+                    new GrpcException({
+                        code: GrpcErrorCode.OK,
+                        message: 'Test',
+                        metadata: 'invalid' as any,
+                    }),
+            ).toThrow('Metadata must be an object');
         });
 
         it('should throw error for invalid metadata keys', () => {
-            expect(() => new GrpcException({
-                code: GrpcErrorCode.OK,
-                message: 'Test',
-                metadata: { '': 'value' } as any
-            })).toThrow('Metadata keys must be non-empty strings');
+            expect(
+                () =>
+                    new GrpcException({
+                        code: GrpcErrorCode.OK,
+                        message: 'Test',
+                        metadata: { '': 'value' } as any,
+                    }),
+            ).toThrow('Metadata keys must be non-empty strings');
         });
 
         it('should filter out invalid array values in metadata', () => {
             const exception = new GrpcException({
                 code: GrpcErrorCode.OK,
                 message: 'Test',
-                metadata: { 
+                metadata: {
                     mixedArray: ['valid', 123, 'also-valid', null, Buffer.from('buf')] as any,
-                    invalidArray: [123, null, undefined] as any
+                    invalidArray: [123, null, undefined] as any,
                 },
             });
 
@@ -318,7 +327,6 @@ describe('GrpcException', () => {
             });
         });
     });
-
 
     describe('static factory methods', () => {
         it('should create NOT_FOUND exception', () => {
@@ -469,20 +477,34 @@ describe('getGrpcStatusDescription', () => {
         expect(getGrpcStatusDescription(GrpcErrorCode.OK)).toBe('Success');
         expect(getGrpcStatusDescription(GrpcErrorCode.CANCELLED)).toBe('Operation was cancelled');
         expect(getGrpcStatusDescription(GrpcErrorCode.UNKNOWN)).toBe('Unknown error');
-        expect(getGrpcStatusDescription(GrpcErrorCode.INVALID_ARGUMENT)).toBe('Invalid argument provided');
-        expect(getGrpcStatusDescription(GrpcErrorCode.DEADLINE_EXCEEDED)).toBe('Request timeout exceeded');
+        expect(getGrpcStatusDescription(GrpcErrorCode.INVALID_ARGUMENT)).toBe(
+            'Invalid argument provided',
+        );
+        expect(getGrpcStatusDescription(GrpcErrorCode.DEADLINE_EXCEEDED)).toBe(
+            'Request timeout exceeded',
+        );
         expect(getGrpcStatusDescription(GrpcErrorCode.NOT_FOUND)).toBe('Resource not found');
-        expect(getGrpcStatusDescription(GrpcErrorCode.ALREADY_EXISTS)).toBe('Resource already exists');
+        expect(getGrpcStatusDescription(GrpcErrorCode.ALREADY_EXISTS)).toBe(
+            'Resource already exists',
+        );
         expect(getGrpcStatusDescription(GrpcErrorCode.PERMISSION_DENIED)).toBe('Permission denied');
-        expect(getGrpcStatusDescription(GrpcErrorCode.RESOURCE_EXHAUSTED)).toBe('Resource exhausted');
-        expect(getGrpcStatusDescription(GrpcErrorCode.FAILED_PRECONDITION)).toBe('Failed precondition');
+        expect(getGrpcStatusDescription(GrpcErrorCode.RESOURCE_EXHAUSTED)).toBe(
+            'Resource exhausted',
+        );
+        expect(getGrpcStatusDescription(GrpcErrorCode.FAILED_PRECONDITION)).toBe(
+            'Failed precondition',
+        );
         expect(getGrpcStatusDescription(GrpcErrorCode.ABORTED)).toBe('Operation aborted');
         expect(getGrpcStatusDescription(GrpcErrorCode.OUT_OF_RANGE)).toBe('Value out of range');
-        expect(getGrpcStatusDescription(GrpcErrorCode.UNIMPLEMENTED)).toBe('Method not implemented');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNIMPLEMENTED)).toBe(
+            'Method not implemented',
+        );
         expect(getGrpcStatusDescription(GrpcErrorCode.INTERNAL)).toBe('Internal server error');
         expect(getGrpcStatusDescription(GrpcErrorCode.UNAVAILABLE)).toBe('Service unavailable');
         expect(getGrpcStatusDescription(GrpcErrorCode.DATA_LOSS)).toBe('Data loss');
-        expect(getGrpcStatusDescription(GrpcErrorCode.UNAUTHENTICATED)).toBe('Authentication required');
+        expect(getGrpcStatusDescription(GrpcErrorCode.UNAUTHENTICATED)).toBe(
+            'Authentication required',
+        );
     });
 
     it('should return unknown status message for invalid codes', () => {
@@ -613,10 +635,15 @@ describe('GrpcConsumerErrorHandler', () => {
             code: GrpcErrorCode.INVALID_ARGUMENT,
             message: 'Invalid request',
             details: { field: 'email' },
-            metadata: { 'request-id': '123' }
+            metadata: { 'request-id': '123' },
         };
 
-        const exception = errorHandler.handleError(grpcError, 'UserService', 'CreateUser', mockStartTime);
+        const exception = errorHandler.handleError(
+            grpcError,
+            'UserService',
+            'CreateUser',
+            mockStartTime,
+        );
 
         expect(exception).toBeInstanceOf(GrpcConsumerException);
         expect(exception.getCode()).toBe(GrpcErrorCode.INVALID_ARGUMENT);
@@ -631,10 +658,15 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should handle gRPC errors with fallback message from details', () => {
         const grpcError = {
             code: GrpcErrorCode.INTERNAL,
-            details: 'Fallback message'
+            details: 'Fallback message',
         };
 
-        const exception = errorHandler.handleError(grpcError, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            grpcError,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('Fallback message');
         expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
@@ -642,10 +674,15 @@ describe('GrpcConsumerErrorHandler', () => {
 
     it('should handle gRPC errors with default message', () => {
         const grpcError = {
-            code: GrpcErrorCode.UNKNOWN
+            code: GrpcErrorCode.UNKNOWN,
         };
 
-        const exception = errorHandler.handleError(grpcError, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            grpcError,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('gRPC error');
         expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
@@ -654,7 +691,12 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should handle standard Error objects', () => {
         const error = new Error('Standard error message');
 
-        const exception = errorHandler.handleError(error, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            error,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('Standard error message');
         expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
@@ -664,7 +706,12 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should handle Error objects with empty message', () => {
         const error = new Error('');
 
-        const exception = errorHandler.handleError(error, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            error,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('Internal error');
         expect(exception.getCode()).toBe(GrpcErrorCode.INTERNAL);
@@ -673,7 +720,12 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should handle string errors', () => {
         const stringError = 'Something went wrong';
 
-        const exception = errorHandler.handleError(stringError, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            stringError,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('Something went wrong');
         expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
@@ -682,7 +734,12 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should handle unknown error types', () => {
         const unknownError = { someProperty: 'value' };
 
-        const exception = errorHandler.handleError(unknownError, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            unknownError,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.message).toBe('Unknown error occurred');
         expect(exception.getCode()).toBe(GrpcErrorCode.UNKNOWN);
@@ -702,7 +759,7 @@ describe('GrpcConsumerErrorHandler', () => {
 
     it('should handle standard errors in isRetryableError', () => {
         const standardError = new Error('Standard error');
-        
+
         // Standard errors get mapped to INTERNAL which is retryable
         expect(errorHandler.isRetryableError(standardError)).toBe(true);
     });
@@ -710,10 +767,15 @@ describe('GrpcConsumerErrorHandler', () => {
     it('should log debug message for cancelled errors', () => {
         const cancelledError = {
             code: GrpcErrorCode.CANCELLED,
-            message: 'Operation cancelled'
+            message: 'Operation cancelled',
         };
 
-        const exception = errorHandler.handleError(cancelledError, 'TestService', 'TestMethod', mockStartTime);
+        const exception = errorHandler.handleError(
+            cancelledError,
+            'TestService',
+            'TestMethod',
+            mockStartTime,
+        );
 
         expect(exception.getCode()).toBe(GrpcErrorCode.CANCELLED);
         expect(exception.message).toBe('Operation cancelled');
@@ -723,7 +785,7 @@ describe('GrpcConsumerErrorHandler', () => {
         const exception = new GrpcException({
             code: GrpcErrorCode.OK,
             message: 'Test',
-            metadata: null as any
+            metadata: null as any,
         });
 
         expect(exception.getMetadata()).toEqual({});
@@ -733,9 +795,18 @@ describe('GrpcConsumerErrorHandler', () => {
         const exception = new GrpcException({
             code: GrpcErrorCode.OK,
             message: 'Test',
-            metadata: undefined
+            metadata: undefined,
         });
 
+        expect(exception.getMetadata()).toEqual({});
+    });
+
+    it('should handle null metadata explicitly in validateMetadata', () => {
+        const exception = new GrpcException({
+            code: GrpcErrorCode.OK,
+            message: 'Test',
+            metadata: null as any,
+        });
         expect(exception.getMetadata()).toEqual({});
     });
 
@@ -748,10 +819,10 @@ describe('GrpcConsumerErrorHandler', () => {
         const exception = new GrpcException({
             code: GrpcErrorCode.OK,
             message: 'Test',
-            metadata: { 
+            metadata: {
                 validKey: 'value',
                 nullKey: null as any,
-                undefinedKey: undefined as any
+                undefinedKey: undefined as any,
             },
         });
 
