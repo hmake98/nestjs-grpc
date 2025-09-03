@@ -53,7 +53,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         try {
             this.logger.lifecycle('Starting gRPC provider');
 
-            await this.createServer();
+            this.createServer();
             await this.startServer();
 
             this.logger.lifecycle('gRPC provider started successfully', {
@@ -105,11 +105,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
     /**
      * Registers a controller instance for method routing
      */
-    async registerController(
-        serviceName: string,
-        instance: any,
-        metadata: ControllerMetadata,
-    ): Promise<void> {
+    registerController(serviceName: string, instance: any, metadata: ControllerMetadata): void {
         try {
             // Store controller instance
             this.controllerInstances.set(serviceName, instance);
@@ -120,7 +116,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
 
             // If server is already running and service not yet registered, register it
             if (this.server && this.isRunning && !this.registeredServices.has(serviceName)) {
-                await this.addServiceToServer(serviceName, metadata);
+                this.addServiceToServer(serviceName, metadata);
                 this.registeredServices.add(serviceName);
             } else if (!this.server || !this.isRunning) {
                 this.logger.debug(
@@ -138,7 +134,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
     /**
      * Creates the gRPC server instance
      */
-    private async createServer(): Promise<void> {
+    private createServer(): void {
         this.server = new grpc.Server({
             'grpc.max_send_message_length': this.options.maxSendMessageSize,
             'grpc.max_receive_message_length': this.options.maxReceiveMessageSize,
@@ -178,7 +174,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         for (const [serviceName, metadata] of Array.from(this.pendingControllers.entries())) {
             if (!this.registeredServices.has(serviceName)) {
                 try {
-                    await this.addServiceToServer(serviceName, metadata);
+                    this.addServiceToServer(serviceName, metadata);
                     this.registeredServices.add(serviceName);
                     this.logger.debug(`Successfully registered pending controller: ${serviceName}`);
                 } catch (error) {
@@ -199,10 +195,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
     /**
      * Adds a service to the gRPC server
      */
-    private async addServiceToServer(
-        serviceName: string,
-        metadata: ControllerMetadata,
-    ): Promise<void> {
+    private addServiceToServer(serviceName: string, metadata: ControllerMetadata): void {
         if (!this.server) {
             throw new Error('Server not initialized');
         }
@@ -227,7 +220,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
 
         // Validate methods and register service
         this.logger.debug(`Validating methods for ${serviceName}`);
-        await this.validateMethods(serviceName, metadata, serviceDefinition);
+        this.validateMethods(serviceName, metadata, serviceDefinition);
     }
 
     /**
@@ -350,7 +343,11 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         const credentials = this.createServerCredentials();
 
         return new Promise<void>((resolve, reject) => {
-            this.server!.bindAsync(url, credentials, (error, port) => {
+            if (!this.server) {
+                reject(new Error('Server not initialized'));
+                return;
+            }
+            this.server.bindAsync(url, credentials, (error, port) => {
                 if (error) {
                     reject(new Error(`Failed to bind server to ${url}: ${error.message}`));
                     return;
@@ -412,10 +409,16 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         }
 
         return new Promise<void>(resolve => {
-            this.server!.tryShutdown(error => {
+            if (!this.server) {
+                resolve();
+                return;
+            }
+            this.server.tryShutdown(error => {
                 if (error) {
                     this.logger.error('Error during graceful shutdown, forcing shutdown', error);
-                    this.server!.forceShutdown();
+                    if (this.server) {
+                        this.server.forceShutdown();
+                    }
                 }
 
                 this.isRunning = false;
@@ -447,11 +450,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
     /**
      * Validates that all registered methods exist in the proto definition
      */
-    private async validateMethods(
-        serviceName: string,
-        metadata: any,
-        serviceDefinition: any,
-    ): Promise<void> {
+    private validateMethods(serviceName: string, metadata: any, serviceDefinition: any): void {
         this.logger.debug(`Validating methods for service: ${serviceName}`);
 
         const protoMethods = this.extractProtoMethods(serviceDefinition, serviceName);
@@ -488,10 +487,13 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         }
 
         try {
+            if (!this.server) {
+                throw new Error('Server not initialized');
+            }
             if (typeof serviceDefinition === 'function' && serviceDefinition.service) {
-                this.server!.addService(serviceDefinition.service, methodImplementations);
+                this.server.addService(serviceDefinition.service, methodImplementations);
             } else {
-                this.server!.addService(serviceDefinition, methodImplementations);
+                this.server.addService(serviceDefinition, methodImplementations);
             }
             this.logger.debug(
                 `Successfully registered service: ${serviceName} with ${Object.keys(methodImplementations).length} methods`,

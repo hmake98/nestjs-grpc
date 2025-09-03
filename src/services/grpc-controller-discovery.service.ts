@@ -27,15 +27,15 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
      * Lifecycle hook called after module initialization.
      * Discovers and registers all gRPC controllers.
      */
-    async onModuleInit(): Promise<void> {
+    onModuleInit(): void {
         this.logger.lifecycle('Starting gRPC controller discovery');
-        await this.discoverAndRegisterControllers();
+        this.discoverAndRegisterControllers();
     }
 
     /**
      * Discovers all gRPC controllers and registers them with the provider service
      */
-    private async discoverAndRegisterControllers(): Promise<void> {
+    private discoverAndRegisterControllers(): void {
         this.logger.debug('Discovering gRPC controllers');
 
         const controllers = this.discoveryService.getControllers();
@@ -68,7 +68,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
 
             this.logger.debug(`Found gRPC controller: ${controllerName}`);
             try {
-                await this.registerController(controller, grpcMetadata);
+                this.registerController(controller, grpcMetadata);
             } catch (error) {
                 this.logger.error(`Failed to register controller ${controllerName}`, error);
             }
@@ -78,7 +78,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
     /**
      * Registers a single gRPC controller with the registry service
      */
-    private async registerController(instance: any, controllerMetadata: any): Promise<void> {
+    private registerController(instance: any, controllerMetadata: any): void {
         try {
             const serviceName = controllerMetadata.serviceName;
 
@@ -167,7 +167,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
             };
 
             // Register with registry service
-            await this.registryService.registerController(serviceName, instance, metadata);
+            this.registryService.registerController(serviceName, instance, metadata);
 
             this.logger.lifecycle(`Successfully registered gRPC controller: ${serviceName}`, {
                 methods: methods.size,

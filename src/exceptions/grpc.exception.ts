@@ -356,10 +356,6 @@ export class GrpcException extends RpcException {
     private static validateMetadata(
         metadata: any,
     ): Record<string, string | Buffer | string[] | Buffer[]> {
-        if (!metadata) {
-            return {};
-        }
-
         if (typeof metadata !== 'object' || Array.isArray(metadata)) {
             throw new Error('Metadata must be an object');
         }
@@ -423,10 +419,6 @@ export class GrpcException extends RpcException {
 
         try {
             Object.entries(this.metadata).forEach(([key, value]) => {
-                if (value === null || value === undefined) {
-                    return;
-                }
-
                 if (Array.isArray(value)) {
                     value.forEach(v => {
                         if (v !== null && v !== undefined) {

@@ -26,7 +26,6 @@
         "clean": "rimraf dist",
         "compile": "tsc -p tsconfig.json",
         "copy-bin": "mkdir -p dist/bin && cp bin/nestjs-grpc.js dist/bin/ && chmod +x dist/bin/nestjs-grpc.js",
-        "dev": "npm run build && npm link",
         "docs": "typedoc --out docs src/index.ts",
         "docs:serve": "npm run docs && npx http-server docs -p 8080 -o",
         "format": "prettier --write \"src/**/*.ts\" \"bin/**/*.js\"",
@@ -34,11 +33,12 @@
         "lint": "eslint \"src/**/*.ts\" --fix",
         "lint:check": "eslint \"src/**/*.ts\"",
         "prepack": "npm run build",
-        "prepublishOnly": "npm run lint:check && npm run format:check",
-        "test": "jest",
-        "test:watch": "jest --watch",
-        "test:coverage": "jest --coverage",
-        "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+        "prepublishOnly": "npm run lint:check && npm run format:check && npm run test",
+        "test": "jest --passWithNoTests --coverage --forceExit --detectOpenHandles --maxWorkers=1",
+        "test:watch": "jest --watch --maxWorkers=1",
+        "test:coverage": "jest --coverage --forceExit --detectOpenHandles --maxWorkers=1",
+        "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand --maxWorkers=1",
+        "test:clean": "jest --passWithNoTests --coverage --forceExit --detectOpenHandles --maxWorkers=1 --clearCache",
         "validate": "npm run build && node dist/bin/nestjs-grpc.js --version",
         "version": "npm run build && npm run docs && git add docs",
         "postversion": "git push && git push --tags",
@@ -48,7 +48,9 @@
         "release:beta": "npm version prerelease --preid=beta && npm publish --tag beta",
         "release:alpha": "npm version prerelease --preid=alpha && npm publish --tag alpha",
         "release:rc": "npm version prerelease --preid=rc && npm publish --tag rc",
-        "release:dry": "npm publish --dry-run"
+        "release:dry": "npm publish --dry-run",
+        "prepare": "npm run build",
+        "preinstall": "npx only-allow npm"
     },
     "keywords": [
         "nestjs",
@@ -63,7 +65,8 @@
     "author": "hmake98",
     "license": "MIT",
     "engines": {
-        "node": ">=16.0.0"
+        "node": ">=18.0.0",
+        "npm": ">=9.0.0"
     },
     "dependencies": {
         "@grpc/grpc-js": "^1.13.3",
@@ -104,5 +107,13 @@
         "@nestjs/microservices": "^10.0.0 || ^11.0.0",
         "reflect-metadata": "^0.1.13 || ^0.2.0",
         "rxjs": "^7.0.0"
+    },
+    "packageManager": "npm@10.0.0",
+    "funding": {
+        "type": "github",
+        "url": "https://github.com/sponsors/hmake98"
+    },
+    "publishConfig": {
+        "access": "public"
     }
 }

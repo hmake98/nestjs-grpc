@@ -28,6 +28,26 @@ describe('GrpcExceptionFilter', () => {
         };
     });
 
+    describe('constructor', () => {
+        it('should use default options when no options provided', () => {
+            const defaultFilter = new GrpcExceptionFilter();
+            expect(defaultFilter).toBeDefined();
+        });
+
+        it('should use default options when empty options provided', () => {
+            const defaultFilter = new GrpcExceptionFilter({});
+            expect(defaultFilter).toBeDefined();
+        });
+
+        it('should use provided options with defaults for missing values', () => {
+            const customFilter = new GrpcExceptionFilter({
+                enableLogging: false,
+                maxMessageLength: 500,
+            });
+            expect(customFilter).toBeDefined();
+        });
+    });
+
     describe('catch', () => {
         it('should handle GrpcException', done => {
             const grpcException = new GrpcException({
@@ -129,6 +149,81 @@ describe('GrpcExceptionFilter', () => {
                     expect(error).toBeDefined();
                     expect(error.code).toBe(13); // fallbackCode
                     expect(error.message).toBe('Internal server error occurred'); // fallbackMessage
+                    done();
+                },
+            });
+        });
+
+        it('should handle RpcException with undefined error code and message', done => {
+            const mockException = {
+                message: 'Rpc Exception',
+                getError: jest.fn().mockReturnValue({
+                    // code is undefined
+                    // message is undefined
+                    details: { field: 'test' },
+                    metadata: { 'request-id': '123' },
+                }),
+            } as any;
+
+            const result = filter.catch(mockException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(13); // Should use fallback code
+                    expect(error.message).toBe('Rpc Exception'); // Should use exception.message
+                    expect(error.details).toEqual({ field: 'test' });
+                    expect(error.metadata).toEqual({ 'request-id': '123' });
+                    done();
+                },
+            });
+        });
+
+        it('should handle RpcException with undefined error message but defined code', done => {
+            const mockException = {
+                message: 'Rpc Exception',
+                getError: jest.fn().mockReturnValue({
+                    code: 5, // NOT_FOUND
+                    // message is undefined
+                    details: { field: 'test' },
+                    metadata: { 'request-id': '123' },
+                }),
+            } as any;
+
+            const result = filter.catch(mockException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(5); // Should use provided code
+                    expect(error.message).toBe('Rpc Exception'); // Should use exception.message
+                    expect(error.details).toEqual({ field: 'test' });
+                    expect(error.metadata).toEqual({ 'request-id': '123' });
+                    done();
+                },
+            });
+        });
+
+        it('should handle RpcException with both error message and exception message undefined', done => {
+            const mockException = {
+                // message is undefined
+                getError: jest.fn().mockReturnValue({
+                    code: 5, // NOT_FOUND
+                    // message is undefined
+                    details: { field: 'test' },
+                    metadata: { 'request-id': '123' },
+                }),
+            } as any;
+
+            const result = filter.catch(mockException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(5); // Should use provided code
+                    expect(error.message).toBe('Internal server error'); // Should use fallback message
+                    expect(error.details).toEqual({ field: 'test' });
+                    expect(error.metadata).toEqual({ 'request-id': '123' });
                     done();
                 },
             });
@@ -615,7 +710,7 @@ describe('GrpcExceptionFilter', () => {
         it('should handle unknown error types (line 102)', done => {
             // Pass a non-standard error type to trigger the unknown error path
             const unknownError = 42; // number instead of Error/RpcException
-            
+
             const result = filter.catch(unknownError, mockHost);
 
             result.subscribe({
@@ -627,16 +722,32 @@ describe('GrpcExceptionFilter', () => {
             });
         });
 
+        it('should handle string exceptions (line 105)', done => {
+            // Pass a string to trigger the string branch in unknown error handling
+            const stringError = 'String error message';
+
+            const result = filter.catch(stringError, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error.code).toBe(13); // INTERNAL code
+                    expect(error.message).toBe('String error message'); // Should use the string directly
+                    expect(error.details).toEqual({ originalError: stringError });
+                    done();
+                },
+            });
+        });
+
         it('should log error details when serializable (line 128)', done => {
             const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
-            
+
             // Mock the logger to capture calls
             const loggerSpy = jest.spyOn((mockFilter as any).logger, 'error');
-            
+
             // Create an error with serializable details
             const testError = new RpcException({
                 message: 'Test error',
-                details: { key: 'value', nested: { data: 'test' } }
+                details: { key: 'value', nested: { data: 'test' } },
             });
 
             const result = mockFilter.catch(testError, mockHost);

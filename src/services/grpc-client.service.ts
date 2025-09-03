@@ -8,6 +8,7 @@ import {
     DEFAULT_TIMEOUT,
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_RETRY_DELAY,
+    VALIDATION_LIMITS,
 } from '../constants';
 import { GrpcOptions, GrpcClientOptions } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
@@ -127,7 +128,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }, this.CLEANUP_INTERVAL);
 
             this.logger.lifecycle('GrpcClientService started successfully');
-        } catch (error) {
+        } catch (_error) {
             throw new Error('Failed to initialize GrpcClientService');
         }
     }
@@ -251,7 +252,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             });
             return client as T;
         } catch (error) {
-            if (error.message.includes('not found in proto definition')) {
+            if (
+                error.message.includes('not found in proto definition') ||
+                error.message.includes('Proto load failed') ||
+                error.message.includes('not loaded yet') ||
+                error.message.includes('Proto not loaded')
+            ) {
                 throw new Error('Service lookup failed');
             }
             throw error;
@@ -782,14 +788,28 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         serviceName: string,
         options?: Partial<GrpcClientOptions>,
     ): GrpcClientOptions {
+        // Clamp values to ensure they are within valid ranges
+        const timeout = options?.timeout ?? DEFAULT_TIMEOUT;
+        const maxRetries = options?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS;
+        const retryDelay = options?.retryDelay ?? DEFAULT_RETRY_DELAY;
+
         return {
             service: serviceName,
             package: options?.package ?? this.options.package,
             url: options?.url ?? this.options.url ?? 'localhost:50051',
             secure: options?.secure ?? this.options.secure ?? false,
-            timeout: options?.timeout ?? DEFAULT_TIMEOUT,
-            maxRetries: options?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
-            retryDelay: options?.retryDelay ?? DEFAULT_RETRY_DELAY,
+            timeout: Math.max(
+                Math.min(timeout, VALIDATION_LIMITS.MAX_TIMEOUT),
+                VALIDATION_LIMITS.MIN_TIMEOUT,
+            ),
+            maxRetries: Math.max(
+                Math.min(maxRetries, VALIDATION_LIMITS.MAX_RETRIES),
+                VALIDATION_LIMITS.MIN_RETRIES,
+            ),
+            retryDelay: Math.max(
+                Math.min(retryDelay, VALIDATION_LIMITS.MAX_RETRY_DELAY),
+                VALIDATION_LIMITS.MIN_RETRY_DELAY,
+            ),
             rootCerts: options?.rootCerts ?? this.options.rootCerts,
             privateKey: options?.privateKey ?? this.options.privateKey,
             certChain: options?.certChain ?? this.options.certChain,

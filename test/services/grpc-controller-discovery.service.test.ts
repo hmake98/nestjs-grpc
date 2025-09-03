@@ -35,6 +35,7 @@ describe('GrpcControllerDiscoveryService', () => {
 
     beforeEach(async () => {
         jest.clearAllMocks();
+        jest.restoreAllMocks();
 
         mockDiscoveryService = {
             getControllers: jest.fn().mockReturnValue([]),
@@ -57,6 +58,10 @@ describe('GrpcControllerDiscoveryService', () => {
             mockReflector as any,
             mockRegistryService as any,
         );
+    });
+
+    afterEach(() => {
+        jest.restoreAllMocks();
     });
 
     describe('constructor', () => {
@@ -427,7 +432,7 @@ describe('GrpcControllerDiscoveryService', () => {
                 .mockReturnValueOnce(undefined); // Reflect.getMetadata fallback
 
             // Mock Reflect to return alternative metadata for the testMethod
-            jest.spyOn(Reflect, 'getMetadata').mockImplementation((key, target, propertyKey) => {
+            jest.spyOn(Reflect, 'getMetadata').mockImplementation((key, _target, propertyKey) => {
                 if (key === GRPC_METHOD_METADATA && propertyKey === 'testMethod') {
                     return { methodName: 'AlternativeMethodName' };
                 }
@@ -513,6 +518,80 @@ describe('GrpcControllerDiscoveryService', () => {
 
             expect(mockLogger.warn).toHaveBeenCalledWith(
                 'No gRPC methods found for controller: EmptyService',
+            );
+        });
+
+        it('should handle method metadata without methodName (fallback to method name)', async () => {
+            // This test covers line 114: methodMetadata.methodName ?? methodName
+            const mockPrototype = {
+                testMethod: jest.fn(),
+                constructor: jest.fn(),
+            };
+
+            const mockController = {
+                instance: {
+                    constructor: { name: 'TestService' },
+                },
+            };
+
+            // Mock Object.getPrototypeOf to return our mock prototype
+            jest.spyOn(Object, 'getPrototypeOf').mockReturnValue(mockPrototype);
+
+            mockDiscoveryService.getControllers.mockReturnValue([mockController]);
+
+            // Mock the reflector to return gRPC controller metadata
+            mockReflector.get
+                .mockReturnValueOnce({ serviceName: 'TestService' }) // GRPC_CONTROLLER_METADATA
+                .mockReturnValueOnce(undefined); // __isProvider__
+
+            // Mock the reflector to return metadata with no methodName
+            mockReflector.get.mockReturnValueOnce({ methodName: null }); // testMethod metadata with null methodName
+
+            await service.onModuleInit();
+
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                'Found gRPC method: TestService.testMethod',
+            );
+        });
+
+        it('should handle alternative metadata without methodName (fallback to method name)', async () => {
+            // This test covers line 127: methodMetadata.methodName ?? methodName
+            const mockPrototype = {
+                testMethod: jest.fn(),
+                constructor: jest.fn(),
+            };
+
+            const mockController = {
+                instance: {
+                    constructor: { name: 'TestService' },
+                },
+            };
+
+            // Mock Object.getPrototypeOf to return our mock prototype
+            jest.spyOn(Object, 'getPrototypeOf').mockReturnValue(mockPrototype);
+
+            mockDiscoveryService.getControllers.mockReturnValue([mockController]);
+
+            // Mock the reflector to return gRPC controller metadata
+            mockReflector.get
+                .mockReturnValueOnce({ serviceName: 'TestService' }) // GRPC_CONTROLLER_METADATA
+                .mockReturnValueOnce(undefined); // __isProvider__
+
+            // Mock the reflector to return no metadata for the method (so it falls back to Reflect.getMetadata)
+            mockReflector.get.mockReturnValueOnce(undefined); // testMethod metadata (no metadata from reflector)
+
+            // Mock Reflect to return metadata with no methodName
+            jest.spyOn(Reflect, 'getMetadata').mockImplementation((key, _target, propertyKey) => {
+                if (key === GRPC_METHOD_METADATA && propertyKey === 'testMethod') {
+                    return { methodName: undefined }; // Undefined methodName, should fallback to 'testMethod'
+                }
+                return undefined;
+            });
+
+            await service.onModuleInit();
+
+            expect(mockLogger.debug).toHaveBeenCalledWith(
+                'Found gRPC method (alt): TestService.testMethod',
             );
         });
     });

@@ -30,8 +30,8 @@ function getPackageVersion(): string {
 /**
  * Validate command arguments
  */
-function validateArgs(): boolean {
-    const args = process.argv.slice(2);
+function validateArgs(argv: string[] = process.argv): boolean {
+    const args = argv.slice(2);
 
     // Allow help and version commands
     if (
@@ -153,6 +153,7 @@ function initializeCli(): void {
                 });
                 await generateCommand(options);
                 logger.lifecycle('Generate command completed successfully');
+                process.exit(0);
             } catch (error) {
                 logger.error('Command failed', error instanceof Error ? error : String(error));
                 process.exit(1);
@@ -176,6 +177,92 @@ function initializeCli(): void {
     } catch (error) {
         logger.error('Error parsing arguments', error instanceof Error ? error : String(error));
         process.exit(1);
+    }
+}
+
+/**
+ * Test seam: exporting run() does not change runtime behavior.
+ * @param argv - Command line arguments to parse
+ */
+export function run(argv: string[] = process.argv): void {
+    setupErrorHandling();
+
+    if (!validateArgs(argv)) {
+        logger.error('Error: Invalid arguments provided');
+        process.exit(1);
+    }
+
+    const program = new Command();
+    const version = getPackageVersion();
+
+    logger.lifecycle('Initializing CLI', { version });
+
+    program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(version);
+
+    program
+        .command('generate')
+        .description('Generate TypeScript definitions from protobuf files')
+        .option(
+            '-p, --proto <pattern>',
+            'Path to proto file, directory, or glob pattern',
+            './protos/**/*.proto',
+        )
+        .option('-o, --output <dir>', 'Output directory for generated files', './src/generated')
+        .option('-w, --watch', 'Watch mode for file changes', false)
+        .option('-c, --classes', 'Generate classes instead of interfaces', false)
+        .option('--no-comments', 'Disable comments in generated files')
+        .option('--no-client-interfaces', 'Do not generate client interfaces')
+        .option('-f, --package-filter <package>', 'Filter by package name')
+        .option('-r, --recursive', 'Recursively search directories for .proto files', true)
+        .option('-v, --verbose', 'Enable verbose logging')
+        .option('-s, --silent', 'Disable all logging except errors')
+        .action(async options => {
+            try {
+                logger.lifecycle('Starting generate command', {
+                    proto: options.proto,
+                    output: options.output,
+                });
+                await generateCommand(options);
+                logger.lifecycle('Generate command completed successfully');
+                process.exit(0);
+            } catch (error) {
+                logger.error('Command failed', error instanceof Error ? error : String(error));
+                process.exit(1);
+            }
+        });
+
+    // Add unknown command handler
+    program.on('command:*', () => {
+        logger.error('Error: Invalid arguments provided');
+        process.exit(1);
+    });
+
+    // Parse arguments and handle unknown commands
+    try {
+        program.parse(argv);
+
+        // Show help if no command provided
+        if (!argv.slice(2).length) {
+            program.outputHelp();
+            process.exit(0);
+        }
+    } catch (error) {
+        // Commander.js throws when --help or --version are used, which is expected
+        // These should exit with code 0, not 1
+        if (
+            error instanceof Error &&
+            (error.message.includes('help') ||
+                error.message.includes('version') ||
+                argv.includes('--help') ||
+                argv.includes('-h') ||
+                argv.includes('--version') ||
+                argv.includes('-V'))
+        ) {
+            process.exit(0);
+        } else {
+            logger.error('Error parsing arguments', error instanceof Error ? error : String(error));
+            process.exit(1);
+        }
     }
 }
 

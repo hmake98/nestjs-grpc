@@ -81,7 +81,7 @@ function validateProtoPath(protoPath: string): string {
  * });
  * ```
  */
-function validateOptions(options: Options = {}): Options {
+function validateOptions(options: Options): Options {
     if (typeof options !== 'object' || options === null) {
         throw new Error('Options must be an object');
     }
