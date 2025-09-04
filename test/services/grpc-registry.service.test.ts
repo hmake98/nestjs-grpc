@@ -70,10 +70,10 @@ describe('GrpcRegistryService', () => {
     });
 
     describe('registerController', () => {
-        it('should register controller successfully', async () => {
-            providerService.registerController.mockResolvedValue();
+        it('should register controller successfully', () => {
+            providerService.registerController.mockReturnValue(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             expect(providerService.registerController).toHaveBeenCalledWith(
                 'TestService',
@@ -82,10 +82,10 @@ describe('GrpcRegistryService', () => {
             );
         });
 
-        it('should store controller in pending registrations', async () => {
-            providerService.registerController.mockResolvedValue();
+        it('should store controller in pending registrations', () => {
+            providerService.registerController.mockReturnValue(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             const registered = service.getRegisteredControllers();
             expect(registered.has('TestService')).toBe(true);
@@ -95,25 +95,25 @@ describe('GrpcRegistryService', () => {
             });
         });
 
-        it('should handle registration errors', async () => {
+        it('should handle registration errors', () => {
             const error = new Error('Registration failed');
-            providerService.registerController.mockRejectedValue(error);
+            providerService.registerController.mockImplementation(() => {
+                throw error;
+            });
 
-            await expect(
-                service.registerController('TestService', mockController, mockControllerMetadata),
-            ).rejects.toThrow('Registration failed');
+            expect(() => {
+                service.registerController('TestService', mockController, mockControllerMetadata);
+            }).toThrow('Registration failed');
         });
 
-        it('should still store controller even if registration fails', async () => {
+        it('should still store controller even if registration fails', () => {
             const error = new Error('Registration failed');
-            providerService.registerController.mockRejectedValue(error);
+            providerService.registerController.mockImplementation(() => {
+                throw error;
+            });
 
             try {
-                await service.registerController(
-                    'TestService',
-                    mockController,
-                    mockControllerMetadata,
-                );
+                service.registerController('TestService', mockController, mockControllerMetadata);
             } catch (e) {
                 // Expected to throw
             }
@@ -129,20 +129,20 @@ describe('GrpcRegistryService', () => {
             expect(registered.size).toBe(0);
         });
 
-        it('should return registered controllers', async () => {
-            providerService.registerController.mockResolvedValue();
+        it('should return registered controllers', () => {
+            providerService.registerController.mockReturnValue(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             const registered = service.getRegisteredControllers();
             expect(registered.size).toBe(1);
             expect(registered.has('TestService')).toBe(true);
         });
 
-        it('should return a copy of registrations', async () => {
-            providerService.registerController.mockResolvedValue();
+        it('should return a copy of registrations', () => {
+            providerService.registerController.mockReturnValue(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             const registered1 = service.getRegisteredControllers();
             const registered2 = service.getRegisteredControllers();
@@ -157,17 +157,17 @@ describe('GrpcRegistryService', () => {
             expect(service.isControllerRegistered('TestService')).toBe(false);
         });
 
-        it('should return true for registered controller', async () => {
-            providerService.registerController.mockResolvedValue();
+        it('should return true for registered controller', () => {
+            providerService.registerController.mockReturnValue(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             expect(service.isControllerRegistered('TestService')).toBe(true);
         });
     });
 
     describe('processPendingRegistrations', () => {
-        it('should process multiple pending registrations', async () => {
+        it('should process multiple pending registrations', () => {
             const controller2 = { method2: jest.fn() };
             const metadata2: ControllerMetadata = {
                 serviceName: 'TestService2',
@@ -176,52 +176,48 @@ describe('GrpcRegistryService', () => {
             };
 
             // Register multiple controllers
-            await service.registerController(
-                'TestService1',
-                mockController,
-                mockControllerMetadata,
-            );
-            await service.registerController('TestService2', controller2, metadata2);
+            service.registerController('TestService1', mockController, mockControllerMetadata);
+            service.registerController('TestService2', controller2, metadata2);
 
             // Clear the mock to track only the onModuleInit processing
             providerService.registerController.mockClear();
 
-            await service.onModuleInit();
+            service.onModuleInit();
 
             expect(providerService.registerController).toHaveBeenCalledTimes(2);
         });
 
-        it('should handle registration errors during processing', async () => {
+        it('should handle registration errors during processing', () => {
             // First call succeeds (during registerController)
-            providerService.registerController.mockResolvedValueOnce();
+            providerService.registerController.mockReturnValueOnce(undefined);
 
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
             // Second call fails (during onModuleInit processing)
-            providerService.registerController.mockRejectedValueOnce(
-                new Error('Processing failed'),
-            );
+            providerService.registerController.mockImplementationOnce(() => {
+                throw new Error('Processing failed');
+            });
 
             // Should not throw
-            await service.onModuleInit();
+            service.onModuleInit();
 
             expect(providerService.registerController).toHaveBeenCalledTimes(2);
         });
 
-        it('should not process if already processing', async () => {
-            await service.registerController('TestService', mockController, mockControllerMetadata);
+        it('should not process if already processing', () => {
+            service.registerController('TestService', mockController, mockControllerMetadata);
 
-            // Simulate concurrent calls to onModuleInit
-            const promise1 = service.onModuleInit();
-            const promise2 = service.onModuleInit();
+            // First call processes the pending registrations
+            service.onModuleInit();
 
-            await Promise.all([promise1, promise2]);
+            // Second call should not process anything since pending registrations are cleared
+            service.onModuleInit();
 
             // Should only register once during processing (plus the initial registration)
             expect(providerService.registerController).toHaveBeenCalledTimes(2);
         });
 
-        it('should handle multiple controllers with mixed success/failure', async () => {
+        it('should handle multiple controllers with mixed success/failure', () => {
             const controller2 = { method2: jest.fn() };
             const metadata2: ControllerMetadata = {
                 serviceName: 'TestService2',
@@ -230,21 +226,19 @@ describe('GrpcRegistryService', () => {
             };
 
             // Register controllers (these should succeed)
-            providerService.registerController.mockResolvedValue();
-            await service.registerController(
-                'TestService1',
-                mockController,
-                mockControllerMetadata,
-            );
-            await service.registerController('TestService2', controller2, metadata2);
+            providerService.registerController.mockReturnValue(undefined);
+            service.registerController('TestService1', mockController, mockControllerMetadata);
+            service.registerController('TestService2', controller2, metadata2);
 
             // Setup mixed responses for processing
             providerService.registerController
                 .mockClear()
-                .mockResolvedValueOnce() // First succeeds
-                .mockRejectedValueOnce(new Error('Second fails')); // Second fails
+                .mockReturnValueOnce(undefined) // First succeeds
+                .mockImplementationOnce(() => {
+                    throw new Error('Second fails');
+                }); // Second fails
 
-            await service.onModuleInit();
+            service.onModuleInit();
 
             expect(providerService.registerController).toHaveBeenCalledTimes(2);
         });

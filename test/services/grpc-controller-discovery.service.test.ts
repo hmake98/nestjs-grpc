@@ -253,12 +253,12 @@ describe('GrpcControllerDiscoveryService', () => {
             mockReflector.get.mockReturnValueOnce({ methodName: 'Method1' });
 
             // Mock registry service error
-            mockRegistryService.registerController.mockRejectedValue(
-                new Error('Registration failed'),
-            );
+            mockRegistryService.registerController.mockImplementation(() => {
+                throw new Error('Registration failed');
+            });
 
             // Should not throw error, just log it
-            await expect(service.onModuleInit()).resolves.not.toThrow();
+            expect(() => service.onModuleInit()).not.toThrow();
 
             expect(mockLogger.error).toHaveBeenCalledWith(
                 'Failed to register controller ErrorController',
