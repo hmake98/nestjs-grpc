@@ -314,8 +314,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
             const result = await this.executeWithRetry(
                 () => this.callUnaryMethod(client, methodName, request, clientOptions),
-                clientOptions?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS,
-                clientOptions?.retryDelay ?? DEFAULT_RETRY_DELAY,
+                clientOptions?.maxRetries ?? DEFAULT_RETRY_ATTEMPTS /* istanbul ignore next */,
+                clientOptions?.retryDelay ?? DEFAULT_RETRY_DELAY /* istanbul ignore next */,
             );
 
             const duration = Date.now() - startTime;

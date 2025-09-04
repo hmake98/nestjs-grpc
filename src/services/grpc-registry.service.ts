@@ -102,6 +102,9 @@ export class GrpcRegistryService implements OnModuleInit {
                 successful: successCount,
                 failed: errorCount,
             });
+
+            // Clear processed registrations
+            this.pendingRegistrations.clear();
         } finally {
             this.isProcessingRegistrations = false;
         }

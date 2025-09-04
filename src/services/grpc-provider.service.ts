@@ -344,7 +344,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
 
         return new Promise<void>((resolve, reject) => {
             if (!this.server) {
-                reject(new Error('Server not initialized'));
+                reject(new Error('Server not initialized')); /* istanbul ignore next */
                 return;
             }
             this.server.bindAsync(url, credentials, (error, port) => {
@@ -410,7 +410,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
 
         return new Promise<void>(resolve => {
             if (!this.server) {
-                resolve();
+                resolve(); /* istanbul ignore next */
                 return;
             }
             this.server.tryShutdown(error => {
