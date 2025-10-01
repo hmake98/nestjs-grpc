@@ -65,7 +65,17 @@ function main() {
         }
 
         // Load and run the CLI
-        require(cliPath);
+        const cli = require(cliPath);
+
+        // Call the initialization function
+        if (cli.initializeCli && typeof cli.initializeCli === 'function') {
+            cli.initializeCli();
+        } else if (cli.run && typeof cli.run === 'function') {
+            cli.run();
+        } else {
+            console.error('❌ CLI module does not export initializeCli or run function');
+            process.exit(1);
+        }
     } catch (error) {
         handleFatalError(error);
         process.exit(1);
