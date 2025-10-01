@@ -2,20 +2,9 @@ import { Metadata } from '@grpc/grpc-js';
 import { Injectable } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 
-import { GrpcErrorCode } from '../constants';
+import { GrpcErrorCode, RETRYABLE_STATUS_CODES } from '../constants';
 import { GrpcConsumerError, GrpcExceptionOptions } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
-
-/**
- * Status codes that are considered retryable
- */
-export const RETRYABLE_STATUS_CODES = [
-    GrpcErrorCode.UNAVAILABLE,
-    GrpcErrorCode.DEADLINE_EXCEEDED,
-    GrpcErrorCode.RESOURCE_EXHAUSTED,
-    GrpcErrorCode.ABORTED,
-    GrpcErrorCode.INTERNAL,
-];
 
 /**
  * Gets human-readable error description for gRPC status codes

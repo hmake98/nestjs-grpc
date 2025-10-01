@@ -4,5 +4,4 @@ export {
     GrpcConsumerErrorHandler,
     getGrpcStatusDescription,
     httpStatusToGrpcStatus,
-    RETRYABLE_STATUS_CODES,
 } from './grpc.exception';

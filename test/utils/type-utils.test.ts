@@ -1,5 +1,4 @@
 import {
-    TYPE_MAPPING,
     snakeToCamel,
     pascalToCamel,
     formatFieldName,
@@ -11,6 +10,7 @@ import {
     getServiceInterfaceDefinition,
     generateTypeDefinitions,
 } from '../../src/utils/type-utils';
+import { TYPE_MAPPING } from '../../src/constants';
 
 describe('Type Utils', () => {
     describe('TYPE_MAPPING', () => {

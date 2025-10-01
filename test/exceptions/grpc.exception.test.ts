@@ -5,9 +5,8 @@ import {
     GrpcConsumerErrorHandler,
     getGrpcStatusDescription,
     httpStatusToGrpcStatus,
-    RETRYABLE_STATUS_CODES,
 } from '../../src/exceptions/grpc.exception';
-import { GrpcErrorCode } from '../../src/constants';
+import { GrpcErrorCode, RETRYABLE_STATUS_CODES } from '../../src/constants';
 import { GrpcConsumerError } from '../../src/interfaces';
 
 // Mock the @grpc/grpc-js module

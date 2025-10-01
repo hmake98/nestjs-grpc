@@ -208,3 +208,50 @@ export enum GrpcErrorCode {
     /** Request does not have valid authentication credentials */
     UNAUTHENTICATED = 16,
 }
+
+/**
+ * Status codes that are considered retryable.
+ * These errors typically indicate temporary failures that may succeed on retry.
+ *
+ * @example
+ * ```typescript
+ * if (RETRYABLE_STATUS_CODES.includes(error.code)) {
+ *   // Retry the operation
+ * }
+ * ```
+ */
+export const RETRYABLE_STATUS_CODES = [
+    GrpcErrorCode.UNAVAILABLE,
+    GrpcErrorCode.DEADLINE_EXCEEDED,
+    GrpcErrorCode.RESOURCE_EXHAUSTED,
+    GrpcErrorCode.ABORTED,
+    GrpcErrorCode.INTERNAL,
+];
+
+/**
+ * Type mapping from protobuf types to TypeScript types.
+ * Used for automatic type generation from proto files.
+ *
+ * @example
+ * ```typescript
+ * const tsType = TYPE_MAPPING['int32']; // returns 'number'
+ * const tsType = TYPE_MAPPING['string']; // returns 'string'
+ * ```
+ */
+export const TYPE_MAPPING: Record<string, string> = {
+    double: 'number',
+    float: 'number',
+    int32: 'number',
+    int64: 'string',
+    uint32: 'number',
+    uint64: 'string',
+    sint32: 'number',
+    sint64: 'string',
+    fixed32: 'number',
+    fixed64: 'string',
+    sfixed32: 'number',
+    sfixed64: 'string',
+    bool: 'boolean',
+    string: 'string',
+    bytes: 'Uint8Array',
+};

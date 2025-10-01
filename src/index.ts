@@ -4,7 +4,7 @@ import 'reflect-metadata';
 export { GrpcModule } from './grpc.module';
 
 // Constants
-export { GrpcErrorCode } from './constants';
+export { GrpcErrorCode, RETRYABLE_STATUS_CODES, TYPE_MAPPING } from './constants';
 
 // Decorators
 export { GrpcController, GrpcMethod } from './decorators';
@@ -53,7 +53,6 @@ export {
     GrpcConsumerException,
     getGrpcStatusDescription,
     httpStatusToGrpcStatus,
-    RETRYABLE_STATUS_CODES,
 } from './exceptions/grpc.exception';
 
 // CLI commands (for programmatic usage)
