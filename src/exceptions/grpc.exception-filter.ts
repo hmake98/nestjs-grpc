@@ -1,6 +1,11 @@
 import { ArgumentsHost, Catch, RpcExceptionFilter } from '@nestjs/common';
 import { Observable, throwError } from 'rxjs';
 
+import {
+    GrpcErrorCode,
+    DEFAULT_MAX_ERROR_MESSAGE_LENGTH,
+    DEFAULT_FALLBACK_ERROR_MESSAGE,
+} from '../constants';
 import { GrpcLogger } from '../utils/logger';
 
 import { GrpcException } from './grpc.exception';
@@ -18,9 +23,9 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any> {
     constructor(options: GrpcExceptionFilterOptions = {}) {
         this.options = {
             enableLogging: options.enableLogging ?? true,
-            maxMessageLength: options.maxMessageLength ?? 1000,
-            fallbackMessage: options.fallbackMessage ?? 'Internal server error occurred',
-            fallbackCode: options.fallbackCode ?? 13, // INTERNAL
+            maxMessageLength: options.maxMessageLength ?? DEFAULT_MAX_ERROR_MESSAGE_LENGTH,
+            fallbackMessage: options.fallbackMessage ?? DEFAULT_FALLBACK_ERROR_MESSAGE,
+            fallbackCode: options.fallbackCode ?? GrpcErrorCode.INTERNAL,
         };
 
         this.logger = new GrpcLogger({
@@ -78,7 +83,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any> {
             const error = exception.getError();
             if (error && typeof error === 'object') {
                 return {
-                    code: error.code ?? 13, // INTERNAL
+                    code: error.code ?? GrpcErrorCode.INTERNAL,
                     message: error.message ?? exception.message ?? 'Internal server error',
                     details: error.details,
                     metadata: error.metadata,
@@ -89,7 +94,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any> {
         // Handle standard Error objects
         if (exception instanceof Error) {
             return {
-                code: 13, // INTERNAL
+                code: GrpcErrorCode.INTERNAL,
                 message: this.truncateMessage(exception.message),
                 details: {
                     name: exception.name,
@@ -100,7 +105,7 @@ export class GrpcExceptionFilter implements RpcExceptionFilter<any> {
 
         // Handle unknown error types
         return {
-            code: 13, // INTERNAL
+            code: GrpcErrorCode.INTERNAL,
             message: this.truncateMessage(
                 typeof exception === 'string' ? exception : 'Unknown error occurred',
             ),

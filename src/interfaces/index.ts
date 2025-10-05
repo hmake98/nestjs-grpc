@@ -3,6 +3,39 @@ import type { Options } from '@grpc/proto-loader';
 import type { DynamicModule, ModuleMetadata, Provider, Type, LogLevel } from '@nestjs/common';
 
 /**
+ * Type definition for gRPC metadata
+ */
+export type GrpcMetadata = Record<string, string | string[] | Buffer | Buffer[]>;
+
+/**
+ * Represents a cached gRPC client with metadata for cache management
+ */
+export interface CachedClient {
+    /** The actual gRPC client instance */
+    client: any;
+    /** Timestamp when the client was created */
+    createdAt: number;
+    /** Timestamp when the client was last used */
+    lastUsed: number;
+    /** Configuration hash for cache validation */
+    config: string;
+}
+
+/**
+ * Options for type generation from proto files
+ */
+export interface TypeOptions {
+    /** Whether to generate classes instead of interfaces */
+    useClasses?: boolean;
+    /** Whether to include comments from the proto file */
+    includeComments?: boolean;
+    /** Package name to filter (only generate types for this package) */
+    packageFilter?: string;
+    /** Whether to include client interfaces */
+    includeClientInterfaces?: boolean;
+}
+
+/**
  * Logger configuration options
  */
 export interface GrpcLoggerOptions {

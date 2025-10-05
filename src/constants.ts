@@ -255,3 +255,132 @@ export const TYPE_MAPPING: Record<string, string> = {
     string: 'string',
     bytes: 'Uint8Array',
 };
+
+/**
+ * Default time-to-live for cached gRPC clients (5 minutes).
+ * Clients inactive beyond this duration are eligible for cleanup.
+ *
+ * @example
+ * ```typescript
+ * const cacheConfig = {
+ *   ttl: DEFAULT_CLIENT_CACHE_TTL
+ * };
+ * ```
+ */
+export const DEFAULT_CLIENT_CACHE_TTL = 5 * 60 * 1000;
+
+/**
+ * Default interval for running client cache cleanup (1 minute).
+ * Determines how often the cleanup routine checks for stale clients.
+ *
+ * @example
+ * ```typescript
+ * setInterval(cleanup, DEFAULT_CLIENT_CLEANUP_INTERVAL);
+ * ```
+ */
+export const DEFAULT_CLIENT_CLEANUP_INTERVAL = 60 * 1000;
+
+/**
+ * Default keepalive time for gRPC client channels (2 hours).
+ * Time between sending keepalive pings when there's no activity.
+ *
+ * @example
+ * ```typescript
+ * const channelOptions = {
+ *   'grpc.keepalive_time_ms': DEFAULT_CLIENT_KEEPALIVE_TIME_MS
+ * };
+ * ```
+ */
+export const DEFAULT_CLIENT_KEEPALIVE_TIME_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Default keepalive timeout for gRPC client channels (20 seconds).
+ * Time to wait for keepalive ping acknowledgement before closing connection.
+ *
+ * @example
+ * ```typescript
+ * const channelOptions = {
+ *   'grpc.keepalive_timeout_ms': DEFAULT_CLIENT_KEEPALIVE_TIMEOUT_MS
+ * };
+ * ```
+ */
+export const DEFAULT_CLIENT_KEEPALIVE_TIMEOUT_MS = 20 * 1000;
+
+/**
+ * Default timeout for proto service loading (30 seconds).
+ * Maximum time to wait for proto services to load before failing.
+ *
+ * @example
+ * ```typescript
+ * setTimeout(() => reject(new Error('Timeout')), PROTO_SERVICE_LOAD_TIMEOUT);
+ * ```
+ */
+export const PROTO_SERVICE_LOAD_TIMEOUT = 30000;
+
+/**
+ * Default maximum attempts for provider readiness checks.
+ * Number of times to check if a provider is ready before giving up.
+ *
+ * @example
+ * ```typescript
+ * for (let i = 0; i < PROVIDER_READY_MAX_ATTEMPTS; i++) {
+ *   if (await isReady()) break;
+ * }
+ * ```
+ */
+export const PROVIDER_READY_MAX_ATTEMPTS = 10;
+
+/**
+ * Default delay between provider readiness check attempts (100ms).
+ * Time to wait between consecutive readiness checks.
+ *
+ * @example
+ * ```typescript
+ * await sleep(PROVIDER_READY_CHECK_DELAY);
+ * ```
+ */
+export const PROVIDER_READY_CHECK_DELAY = 100;
+
+/**
+ * Default maximum length for error messages in exception filter (1000 characters).
+ * Error messages longer than this will be truncated in logs.
+ *
+ * @example
+ * ```typescript
+ * const truncated = message.substring(0, DEFAULT_MAX_ERROR_MESSAGE_LENGTH);
+ * ```
+ */
+export const DEFAULT_MAX_ERROR_MESSAGE_LENGTH = 1000;
+
+/**
+ * Default fallback error message when normalization fails.
+ * Used when the original error cannot be properly serialized.
+ *
+ * @example
+ * ```typescript
+ * const message = error.message || DEFAULT_FALLBACK_ERROR_MESSAGE;
+ * ```
+ */
+export const DEFAULT_FALLBACK_ERROR_MESSAGE = 'Internal server error occurred';
+
+/**
+ * Default gRPC channel options for proto utilities.
+ * Standard configuration for gRPC channel behavior.
+ *
+ * @example
+ * ```typescript
+ * const options = { ...DEFAULT_GRPC_CHANNEL_OPTIONS, ...customOptions };
+ * ```
+ */
+export const DEFAULT_GRPC_CHANNEL_OPTIONS = {
+    /** Keepalive time (1 minute) - time between keepalive pings */
+    'grpc.keepalive_time_ms': 60000,
+    /** Keepalive timeout (20 seconds) - time to wait for ping acknowledgement */
+    'grpc.keepalive_timeout_ms': 20000,
+    /** Minimum time between pings (1 minute) - prevents ping flooding */
+    'grpc.http2.min_time_between_pings_ms': 60000,
+    /** Maximum pings without data (0 = unlimited) - allows keepalive pings */
+    'grpc.http2.max_pings_without_data': 0,
+    /** Permit keepalive without calls (1 = true) - allows pings on idle connections */
+    'grpc.keepalive_permit_without_calls': 1,
+} as const;

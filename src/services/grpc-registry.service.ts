@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 
+import { PROVIDER_READY_MAX_ATTEMPTS, PROVIDER_READY_CHECK_DELAY } from '../constants';
 import { ControllerMetadata } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
 
@@ -115,16 +116,14 @@ export class GrpcRegistryService implements OnModuleInit {
      */
     private async waitForProviderReady(): Promise<void> {
         let attempts = 0;
-        const maxAttempts = 10;
-        const delay = 100; // 100ms between attempts
 
-        while (attempts < maxAttempts) {
+        while (attempts < PROVIDER_READY_MAX_ATTEMPTS) {
             if (this.providerService.isServerRunning()) {
                 return;
             }
 
-            this.logger.debug(`Provider not ready, attempt ${attempts + 1}/${maxAttempts}`);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            this.logger.debug(`Provider not ready, attempt ${attempts + 1}/${PROVIDER_READY_MAX_ATTEMPTS}`);
+            await new Promise(resolve => setTimeout(resolve, PROVIDER_READY_CHECK_DELAY));
             attempts++;
         }
 

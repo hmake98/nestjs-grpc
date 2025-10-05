@@ -5,6 +5,8 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as protobuf from 'protobufjs';
 
+import { DEFAULT_GRPC_CHANNEL_OPTIONS } from '../constants';
+
 import type { Options } from '@grpc/proto-loader';
 
 /**
@@ -444,13 +446,7 @@ export function createChannelOptions(
             throw new Error('additionalOptions must be an object');
         }
 
-        const options: Record<string, any> = {
-            'grpc.keepalive_time_ms': 60000,
-            'grpc.keepalive_timeout_ms': 20000,
-            'grpc.http2.min_time_between_pings_ms': 60000,
-            'grpc.http2.max_pings_without_data': 0,
-            'grpc.keepalive_permit_without_calls': 1,
-        };
+        const options: Record<string, any> = { ...DEFAULT_GRPC_CHANNEL_OPTIONS };
 
         // Add size limits if specified
         if (maxSendSize) {

@@ -1,7 +1,7 @@
 import * as grpc from '@grpc/grpc-js';
 import { Injectable, Inject, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 
-import { GRPC_OPTIONS } from '../constants';
+import { GRPC_OPTIONS, PROTO_SERVICE_LOAD_TIMEOUT } from '../constants';
 import { GrpcOptions, ControllerMetadata } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
 
@@ -157,7 +157,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         try {
             const loadPromise = this.protoService.load();
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Proto service load timeout')), 30000),
+                setTimeout(() => reject(new Error('Proto service load timeout')), PROTO_SERVICE_LOAD_TIMEOUT),
             );
 
             await Promise.race([loadPromise, timeoutPromise]);

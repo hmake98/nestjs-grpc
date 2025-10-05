@@ -1,28 +1,7 @@
 import { TYPE_MAPPING } from '../constants';
+import type { TypeOptions, GrpcMetadata } from '../interfaces';
 
 import type * as protobuf from 'protobufjs';
-
-/**
- * Type definition for gRPC metadata
- */
-export type GrpcMetadata = Record<string, string | string[] | Buffer | Buffer[]>;
-
-/**
- * Simple options for type generation
- */
-export interface TypeOptions {
-    /** Whether to generate classes instead of interfaces */
-    useClasses?: boolean;
-
-    /** Whether to include comments from the proto file */
-    includeComments?: boolean;
-
-    /** Package name to filter (only generate types for this package) */
-    packageFilter?: string;
-
-    /** Whether to include client interfaces */
-    includeClientInterfaces?: boolean;
-}
 
 /**
  * Converts snake_case to camelCase

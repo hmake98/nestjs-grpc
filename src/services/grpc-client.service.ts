@@ -9,25 +9,15 @@ import {
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_RETRY_DELAY,
     VALIDATION_LIMITS,
+    DEFAULT_CLIENT_CACHE_TTL,
+    DEFAULT_CLIENT_CLEANUP_INTERVAL,
+    DEFAULT_CLIENT_KEEPALIVE_TIME_MS,
+    DEFAULT_CLIENT_KEEPALIVE_TIMEOUT_MS,
 } from '../constants';
-import { GrpcOptions, GrpcClientOptions } from '../interfaces';
+import { GrpcOptions, GrpcClientOptions, CachedClient } from '../interfaces';
 import { GrpcLogger } from '../utils/logger';
 
 import { GrpcProtoService } from './grpc-proto.service';
-
-/**
- * Represents a cached gRPC client with metadata for cache management
- */
-interface CachedClient {
-    /** The actual gRPC client instance */
-    client: any;
-    /** Timestamp when the client was created */
-    createdAt: number;
-    /** Timestamp when the client was last used */
-    lastUsed: number;
-    /** Configuration hash for cache validation */
-    config: string;
-}
 
 /**
  * Service responsible for creating and managing gRPC clients with caching,
@@ -69,10 +59,6 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
     private readonly activeStreams = new Set<any>();
     /** Interval timer for periodic client cleanup */
     private cleanupInterval?: NodeJS.Timeout;
-    /** Time-to-live for cached clients (5 minutes) */
-    private readonly CLIENT_CACHE_TTL = 5 * 60 * 1000;
-    /** Interval between cleanup cycles (1 minute) */
-    private readonly CLEANUP_INTERVAL = 60 * 1000;
 
     /**
      * Constructs the GrpcClientService with required dependencies
@@ -113,8 +99,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
         try {
             this.logger.lifecycle('GrpcClientService starting', {
-                maxCacheSize: this.CLIENT_CACHE_TTL,
-                cleanupInterval: this.CLEANUP_INTERVAL,
+                maxCacheSize: DEFAULT_CLIENT_CACHE_TTL,
+                cleanupInterval: DEFAULT_CLIENT_CLEANUP_INTERVAL,
             });
 
             // Optionally trigger proto loading without blocking initialization
@@ -125,7 +111,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             // Start cleanup interval
             this.cleanupInterval = setInterval(() => {
                 this.cleanupStaleClients();
-            }, this.CLEANUP_INTERVAL);
+            }, DEFAULT_CLIENT_CLEANUP_INTERVAL);
 
             this.logger.lifecycle('GrpcClientService started successfully');
         } catch (_error) {
@@ -679,7 +665,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     private cleanupStaleClients(): void {
         const now = Date.now();
-        const staleCutoff = now - this.CLIENT_CACHE_TTL;
+        const staleCutoff = now - DEFAULT_CLIENT_CACHE_TTL;
         let cleanedUpCount = 0;
 
         for (const [key, cachedClient] of this.clients) {
@@ -948,8 +934,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 : grpc.credentials.createInsecure();
 
             const client = new serviceConstructor(options.url, credentials, {
-                'grpc.keepalive_time_ms': 2 * 60 * 60 * 1000, // 2 hours
-                'grpc.keepalive_timeout_ms': 20 * 1000, // 20 seconds
+                'grpc.keepalive_time_ms': DEFAULT_CLIENT_KEEPALIVE_TIME_MS,
+                'grpc.keepalive_timeout_ms': DEFAULT_CLIENT_KEEPALIVE_TIMEOUT_MS,
                 'grpc.keepalive_permit_without_calls': true,
                 'grpc.max_send_message_length': this.options.maxSendMessageSize,
                 'grpc.max_receive_message_length': this.options.maxReceiveMessageSize,
