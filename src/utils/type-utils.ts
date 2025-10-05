@@ -1,6 +1,6 @@
 import { TYPE_MAPPING } from '../constants';
-import type { TypeOptions, GrpcMetadata } from '../interfaces';
 
+import type { TypeOptions, GrpcMetadata } from '../interfaces';
 import type * as protobuf from 'protobufjs';
 
 /**

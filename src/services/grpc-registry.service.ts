@@ -122,7 +122,9 @@ export class GrpcRegistryService implements OnModuleInit {
                 return;
             }
 
-            this.logger.debug(`Provider not ready, attempt ${attempts + 1}/${PROVIDER_READY_MAX_ATTEMPTS}`);
+            this.logger.debug(
+                `Provider not ready, attempt ${attempts + 1}/${PROVIDER_READY_MAX_ATTEMPTS}`,
+            );
             await new Promise(resolve => setTimeout(resolve, PROVIDER_READY_CHECK_DELAY));
             attempts++;
         }

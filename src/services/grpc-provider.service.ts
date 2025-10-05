@@ -157,7 +157,10 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         try {
             const loadPromise = this.protoService.load();
             const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Proto service load timeout')), PROTO_SERVICE_LOAD_TIMEOUT),
+                setTimeout(
+                    () => reject(new Error('Proto service load timeout')),
+                    PROTO_SERVICE_LOAD_TIMEOUT,
+                ),
             );
 
             await Promise.race([loadPromise, timeoutPromise]);
