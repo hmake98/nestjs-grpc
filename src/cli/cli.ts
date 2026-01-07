@@ -6,6 +6,7 @@ import process from 'process';
 import { Command } from 'commander';
 
 import { generateCommand } from '../commands';
+import { GrpcLogLevel } from '../utils/enums';
 import { GrpcLogger } from '../utils/logger';
 
 /**
@@ -13,7 +14,7 @@ import { GrpcLogger } from '../utils/logger';
  */
 const logger = new GrpcLogger({
     context: 'CLI',
-    level: 'log',
+    level: GrpcLogLevel.LOG,
 });
 
 /**
@@ -77,12 +78,12 @@ function setupErrorHandling(): void {
     };
 
     const sigtermHandler = () => {
-        logger.lifecycle('Received SIGTERM, shutting down gracefully');
+        logger.log('Received SIGTERM, shutting down gracefully');
         process.exit(0);
     };
 
     const sigintHandler = () => {
-        logger.lifecycle('Received SIGINT, shutting down gracefully');
+        logger.log('Received SIGINT, shutting down gracefully');
         process.exit(0);
     };
 
@@ -124,7 +125,7 @@ function initializeCli(): void {
     const program = new Command();
     const version = getPackageVersion();
 
-    logger.lifecycle('Initializing CLI', { version });
+    logger.log('Initializing CLI');
 
     program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(version);
 
@@ -147,12 +148,9 @@ function initializeCli(): void {
         .option('-s, --silent', 'Disable all logging except errors')
         .action(async options => {
             try {
-                logger.lifecycle('Starting generate command', {
-                    proto: options.proto,
-                    output: options.output,
-                });
+                logger.log('Starting generate command');
                 await generateCommand(options);
-                logger.lifecycle('Generate command completed successfully');
+                logger.log('Generate command completed successfully');
                 process.exit(0);
             } catch (error) {
                 logger.error('Command failed', error instanceof Error ? error : String(error));
@@ -195,7 +193,7 @@ export function run(argv: string[] = process.argv): void {
     const program = new Command();
     const version = getPackageVersion();
 
-    logger.lifecycle('Initializing CLI', { version });
+    logger.log('Initializing CLI');
 
     program.name('nestjs-grpc').description('CLI tool for NestJS gRPC package').version(version);
 
@@ -218,12 +216,9 @@ export function run(argv: string[] = process.argv): void {
         .option('-s, --silent', 'Disable all logging except errors')
         .action(async options => {
             try {
-                logger.lifecycle('Starting generate command', {
-                    proto: options.proto,
-                    output: options.output,
-                });
+                logger.log('Starting generate command');
                 await generateCommand(options);
-                logger.lifecycle('Generate command completed successfully');
+                logger.log('Generate command completed successfully');
                 process.exit(0);
             } catch (error) {
                 logger.error('Command failed', error instanceof Error ? error : String(error));

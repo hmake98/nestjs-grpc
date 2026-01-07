@@ -1,5 +1,4 @@
 {
-    "preset": "ts-jest",
     "testEnvironment": "node",
     "testMatch": ["**/__tests__/**/*.test.ts", "**/?(*.)+(spec|test).ts"],
     "collectCoverageFrom": ["src/**/*.ts", "!src/**/*.d.ts", "!src/cli/cli.ts", "!**/index.ts"],
@@ -15,7 +14,25 @@
     "coverageReporters": ["text", "lcov", "html"],
     "moduleFileExtensions": ["ts", "js", "json"],
     "transform": {
-        "^.+\\.ts$": "ts-jest"
+        "^.+\\.ts$": ["@swc/jest", {
+            "jsc": {
+                "parser": {
+                    "syntax": "typescript",
+                    "decorators": true,
+                    "dynamicImport": true
+                },
+                "transform": {
+                    "decoratorMetadata": true,
+                    "legacyDecorator": true
+                },
+                "target": "es2020",
+                "externalHelpers": false
+            }
+        }]
+    },
+    "moduleNameMapper": {
+        "^@grpc/grpc-js$": "<rootDir>/test/__mocks__/@grpc/grpc-js.js",
+        "^protobufjs$": "<rootDir>/test/__mocks__/protobufjs.js"
     },
     "testPathIgnorePatterns": ["/node_modules/", "/dist/", "src/cli/cli.ts"],
     "setupFilesAfterEnv": ["<rootDir>/test/setup.ts"],

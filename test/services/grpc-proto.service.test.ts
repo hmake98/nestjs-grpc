@@ -5,7 +5,7 @@ import { glob } from 'glob';
 
 import { GrpcProtoService } from '../../src/services/grpc-proto.service';
 import { GRPC_OPTIONS } from '../../src/constants';
-import { GrpcOptions } from '../../src/interfaces';
+import { GrpcLogLevel, GrpcOptions } from '../../src/interfaces';
 
 // Mock all external dependencies
 jest.mock('fs');
@@ -39,8 +39,8 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
             package: 'test.package',
             logging: {
                 enabled: true,
-                level: 'debug',
-                logErrors: true,
+                level: GrpcLogLevel.DEBUG,
+                context: 'GrpcProtoService',
             },
         };
 
@@ -114,7 +114,7 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
         it('should log debug info when debug logging is enabled', () => {
             const debugOptions = {
                 ...mockOptions,
-                logging: { level: 'debug' as const },
+                logging: { level: GrpcLogLevel.DEBUG, context: 'GrpcProtoService' },
             };
 
             // Should not throw and initialize with debug logging
@@ -766,7 +766,7 @@ describe('GrpcProtoService - Comprehensive Tests', () => {
         it('should handle logging with logErrors disabled', async () => {
             const noLogOptions = {
                 ...mockOptions,
-                logging: { logErrors: false },
+                logging: { enabled: false },
             };
 
             const noLogService = new GrpcProtoService(noLogOptions);

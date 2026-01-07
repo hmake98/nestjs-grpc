@@ -109,7 +109,7 @@ const baseTypeScriptRules = {
     'import/no-unresolved': 'error',
     'import/no-cycle': 'error',
     'import/no-unused-modules': 'warn',
-    'import/no-deprecated': 'warn',
+    'import/no-deprecated': 'off', // RxJS v8 deprecation warnings are informational
     'import/newline-after-import': 'error',
     'import/no-duplicates': 'error',
     'import/no-relative-parent-imports': 'off',

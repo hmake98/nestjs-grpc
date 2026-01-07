@@ -90,14 +90,11 @@ export class GrpcProtoService implements OnModuleInit {
      */
     async onModuleInit(): Promise<void> {
         try {
-            this.logger.lifecycle('Loading proto files', {
-                path: this.options.protoPath,
-                package: this.options.package,
-            });
+            this.logger.log('Loading proto files');
 
             await this.load();
 
-            this.logger.lifecycle('Proto files loaded successfully');
+            this.logger.log('Proto files loaded successfully');
         } catch (error) {
             this.logger.error('Failed to load proto files', error);
             throw error;
@@ -214,7 +211,7 @@ export class GrpcProtoService implements OnModuleInit {
             throw new Error(`No proto files found in ${protoPath}`);
         }
 
-        this.logger.lifecycle(`Found ${protoFiles.length} proto files`);
+        this.logger.debug(`Found ${protoFiles.length} proto files`);
 
         const services = {};
         const errors: string[] = [];
@@ -237,10 +234,7 @@ export class GrpcProtoService implements OnModuleInit {
             } catch (error) {
                 const errorMsg = `Error loading proto file ${file}: ${error.message}`;
                 errors.push(errorMsg);
-
-                if (this.options.logging?.logErrors !== false) {
-                    this.logger.error(errorMsg, error);
-                }
+                this.logger.error(errorMsg, error);
             }
         }
 
@@ -248,12 +242,7 @@ export class GrpcProtoService implements OnModuleInit {
             throw new Error(`No services loaded successfully. Errors: ${errors.join('; ')}`);
         }
 
-        this.logger.lifecycle('Proto files loaded successfully', {
-            totalFiles: protoFiles.length,
-            successfulFiles: protoFiles.length - errors.length,
-            failedFiles: errors.length,
-            totalServices: Object.keys(services).length,
-        });
+        this.logger.log('Proto files loaded successfully');
 
         this.protoDefinition = services;
         return services;
@@ -438,9 +427,7 @@ export class GrpcProtoService implements OnModuleInit {
                     fs.accessSync(file, fs.constants.R_OK);
                     validFiles.push(file);
                 } catch (error) {
-                    if (this.options.logging?.logErrors !== false) {
-                        this.logger.warn(`Cannot read proto file ${file}: ${error.message}`);
-                    }
+                    this.logger.warn(`Cannot read proto file ${file}: ${error.message}`);
                 }
             }
 

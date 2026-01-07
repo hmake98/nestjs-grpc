@@ -28,7 +28,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
      * Discovers and registers all gRPC controllers.
      */
     onModuleInit(): void {
-        this.logger.lifecycle('Starting gRPC controller discovery');
+        this.logger.log('Starting gRPC controller discovery');
         this.discoverAndRegisterControllers();
     }
 
@@ -153,11 +153,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
             }
 
             // Log all discovered methods
-            const methodList = Array.from(methods.keys());
-            this.logger.lifecycle(`Discovered methods for ${serviceName}:`, {
-                methods: methodList,
-                count: methods.size,
-            });
+            this.logger.debug(`Discovered ${methods.size} methods for ${serviceName}`);
 
             // Create controller metadata
             const metadata: ControllerMetadata = {
@@ -169,10 +165,7 @@ export class GrpcControllerDiscoveryService implements OnModuleInit {
             // Register with registry service
             this.registryService.registerController(serviceName, instance, metadata);
 
-            this.logger.lifecycle(`Successfully registered gRPC controller: ${serviceName}`, {
-                methods: methods.size,
-                methodNames: methodList,
-            });
+            this.logger.log(`Successfully registered gRPC controller: ${serviceName}`);
         } catch (error) {
             this.logger.error(`Failed to register controller`, error);
             throw error;

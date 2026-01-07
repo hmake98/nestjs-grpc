@@ -1,6 +1,6 @@
 import { TYPE_MAPPING } from '../constants';
 
-import type { TypeOptions, GrpcMetadata } from '../interfaces';
+import type { TypeOptions } from '../interfaces';
 import type * as protobuf from 'protobufjs';
 
 /**
@@ -8,7 +8,7 @@ import type * as protobuf from 'protobufjs';
  * @param str The snake_case string
  * @returns The camelCase string
  */
-export function snakeToCamel(str: string): string {
+function snakeToCamel(str: string): string {
     return str.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
@@ -17,7 +17,7 @@ export function snakeToCamel(str: string): string {
  * @param str The PascalCase string
  * @returns The camelCase string
  */
-export function pascalToCamel(str: string): string {
+function pascalToCamel(str: string): string {
     return str.charAt(0).toLowerCase() + str.slice(1);
 }
 

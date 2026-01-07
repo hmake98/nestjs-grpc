@@ -3,7 +3,7 @@ import * as grpc from '@grpc/grpc-js';
 
 import { GrpcProviderService } from '../../src/services/grpc-provider.service';
 import { GrpcProtoService } from '../../src/services/grpc-proto.service';
-import { GrpcOptions, ControllerMetadata } from '../../src/interfaces';
+import { GrpcLogLevel, GrpcOptions, ControllerMetadata } from '../../src/interfaces';
 
 // Mock grpc module
 jest.mock('@grpc/grpc-js', () => ({
@@ -31,11 +31,11 @@ const mockProtoService = {
 
 // Mock GrpcLogger
 const mockLogger = {
-    lifecycle: jest.fn(),
     debug: jest.fn(),
-    error: jest.fn(),
+    verbose: jest.fn(),
+    log: jest.fn(),
     warn: jest.fn(),
-    performance: jest.fn(),
+    error: jest.fn(),
 };
 
 jest.mock('../../src/utils/logger', () => ({
@@ -69,7 +69,8 @@ describe('GrpcProviderService', () => {
             protoPath: '/test/path.proto',
             package: 'test.package',
             logging: {
-                level: 'log',
+                level: GrpcLogLevel.LOG,
+                context: 'GrpcProviderService',
             },
         };
 
@@ -134,15 +135,8 @@ describe('GrpcProviderService', () => {
 
             await service.onModuleInit();
 
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith('Starting gRPC provider');
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith(
-                'gRPC provider started successfully',
-                {
-                    url: 'localhost:50051',
-                    secure: false,
-                    controllers: 0,
-                },
-            );
+            expect(mockLogger.log).toHaveBeenCalledWith('Starting gRPC provider');
+            expect(mockLogger.log).toHaveBeenCalledWith('gRPC provider started successfully');
         });
 
         it('should handle server start failure', async () => {
@@ -176,8 +170,8 @@ describe('GrpcProviderService', () => {
 
             await service.onModuleDestroy();
 
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith('Shutting down gRPC provider');
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith('gRPC provider shutdown complete');
+            expect(mockLogger.log).toHaveBeenCalledWith('Shutting down gRPC provider');
+            expect(mockLogger.log).toHaveBeenCalledWith('gRPC provider shutdown complete');
         });
 
         it('should handle shutdown errors gracefully', async () => {

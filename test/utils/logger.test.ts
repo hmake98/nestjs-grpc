@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { GrpcLogger } from '../../src/utils/logger';
-import { GrpcLoggerOptions } from '../../src/interfaces';
+import { GrpcLoggerOptions, GrpcLogLevel } from '../../src/interfaces';
 
 // Mock the NestJS Logger
 jest.mock('@nestjs/common', () => ({
@@ -40,11 +40,8 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         it('should create logger with custom options', () => {
             const options: GrpcLoggerOptions = {
                 enabled: true,
-                level: 'debug',
+                level: GrpcLogLevel.DEBUG,
                 context: 'CustomService',
-                logErrors: false,
-                logPerformance: true,
-                logDetails: true,
             };
 
             logger = new GrpcLogger(options);
@@ -72,7 +69,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
 
     describe('debug method', () => {
         beforeEach(() => {
-            logger = new GrpcLogger({ level: 'debug', context: 'TestService' });
+            logger = new GrpcLogger({ level: GrpcLogLevel.DEBUG, context: 'TestService' });
         });
 
         it('should log debug message without context', () => {
@@ -94,14 +91,14 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         });
 
         it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'error' });
+            const highLevelLogger = new GrpcLogger({ level: GrpcLogLevel.ERROR });
             highLevelLogger.debug('Should not log');
 
             expect(mockNestLogger.debug).not.toHaveBeenCalled();
         });
 
         it('should not log when disabled', () => {
-            const disabledLogger = new GrpcLogger({ enabled: false, level: 'debug' });
+            const disabledLogger = new GrpcLogger({ enabled: false, level: GrpcLogLevel.DEBUG });
             disabledLogger.debug('Should not log');
 
             expect(mockNestLogger.debug).not.toHaveBeenCalled();
@@ -110,7 +107,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
 
     describe('verbose method', () => {
         beforeEach(() => {
-            logger = new GrpcLogger({ level: 'verbose', context: 'TestService' });
+            logger = new GrpcLogger({ level: GrpcLogLevel.VERBOSE, context: 'TestService' });
         });
 
         it('should log verbose message without context', () => {
@@ -129,7 +126,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         });
 
         it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'warn' });
+            const highLevelLogger = new GrpcLogger({ level: GrpcLogLevel.WARN });
             highLevelLogger.verbose('Should not log');
 
             expect(mockNestLogger.verbose).not.toHaveBeenCalled();
@@ -138,7 +135,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
 
     describe('log method', () => {
         beforeEach(() => {
-            logger = new GrpcLogger({ level: 'log', context: 'TestService' });
+            logger = new GrpcLogger({ level: GrpcLogLevel.LOG, context: 'TestService' });
         });
 
         it('should log message without context', () => {
@@ -154,7 +151,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         });
 
         it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'error' });
+            const highLevelLogger = new GrpcLogger({ level: GrpcLogLevel.ERROR });
             highLevelLogger.log('Should not log');
 
             expect(mockNestLogger.log).not.toHaveBeenCalled();
@@ -163,7 +160,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
 
     describe('warn method', () => {
         beforeEach(() => {
-            logger = new GrpcLogger({ level: 'warn', context: 'TestService' });
+            logger = new GrpcLogger({ level: GrpcLogLevel.WARN, context: 'TestService' });
         });
 
         it('should log warning message without context', () => {
@@ -179,7 +176,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         });
 
         it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'error' });
+            const highLevelLogger = new GrpcLogger({ level: GrpcLogLevel.ERROR });
             highLevelLogger.warn('Should not log');
 
             expect(mockNestLogger.warn).not.toHaveBeenCalled();
@@ -188,7 +185,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
 
     describe('error method', () => {
         beforeEach(() => {
-            logger = new GrpcLogger({ level: 'error', logErrors: true, context: 'TestService' });
+            logger = new GrpcLogger({ level: GrpcLogLevel.ERROR, context: 'TestService' });
         });
 
         it('should log error message without error object', () => {
@@ -231,13 +228,6 @@ describe('GrpcLogger - Comprehensive Tests', () => {
             );
         });
 
-        it('should not log when logErrors is disabled', () => {
-            const noErrorLogger = new GrpcLogger({ logErrors: false });
-            noErrorLogger.error('Should not log');
-
-            expect(mockNestLogger.error).not.toHaveBeenCalled();
-        });
-
         it('should not log when disabled globally', () => {
             const disabledLogger = new GrpcLogger({ enabled: false });
             disabledLogger.error('Should not log');
@@ -246,267 +236,42 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         });
     });
 
-    describe('performance method', () => {
-        beforeEach(() => {
-            logger = new GrpcLogger({
-                level: 'verbose',
-                logPerformance: true,
-                context: 'TestService',
-            });
-        });
-
-        it('should log performance message without context', () => {
-            logger.performance('Database query', 150);
-
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith('Database query (150ms)');
-        });
-
-        it('should log performance message with context', () => {
-            logger.performance('Database query', 150, 'DatabaseService');
-
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith(
-                'Database query (150ms)',
-                'DatabaseService',
-            );
-        });
-
-        it('should not log when logPerformance is disabled', () => {
-            const noPerfLogger = new GrpcLogger({ level: 'verbose', logPerformance: false });
-            noPerfLogger.performance('Should not log', 100);
-
-            expect(mockNestLogger.verbose).not.toHaveBeenCalled();
-        });
-
-        it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'warn', logPerformance: true });
-            highLevelLogger.performance('Should not log', 100);
-
-            expect(mockNestLogger.verbose).not.toHaveBeenCalled();
-        });
-
-        it('should not log when disabled globally', () => {
-            const disabledLogger = new GrpcLogger({ enabled: false, logPerformance: true });
-            disabledLogger.performance('Should not log', 100);
-
-            expect(mockNestLogger.verbose).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('detail method', () => {
-        beforeEach(() => {
-            logger = new GrpcLogger({
-                level: 'debug',
-                logDetails: true,
-                context: 'TestService',
-            });
-        });
-
-        it('should log detail message without data', () => {
-            logger.detail('Processing request');
-
-            expect(mockNestLogger.debug).toHaveBeenCalledWith('Processing request');
-        });
-
-        it('should log detail message with data', () => {
-            const data = { userId: 123, action: 'login' };
-            logger.detail('Request received', data);
-
-            const expectedMessage = 'Request received: {\n  "userId": 123,\n  "action": "login"\n}';
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(expectedMessage);
-        });
-
-        it('should log detail message with data and context', () => {
-            const data = { userId: 123 };
-            logger.detail('Request received', data, 'AuthService');
-
-            const expectedMessage = 'Request received: {\n  "userId": 123\n}';
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(expectedMessage, 'AuthService');
-        });
-
-        it('should log detail message without data but with context', () => {
-            logger.detail('Processing request', undefined, 'AuthService');
-
-            expect(mockNestLogger.debug).toHaveBeenCalledWith('Processing request', 'AuthService');
-        });
-
-        it('should not log when logDetails is disabled', () => {
-            const noDetailLogger = new GrpcLogger({ level: 'debug', logDetails: false });
-            noDetailLogger.detail('Should not log');
-
-            expect(mockNestLogger.debug).not.toHaveBeenCalled();
-        });
-
-        it('should not log when level is too high', () => {
-            const highLevelLogger = new GrpcLogger({ level: 'warn', logDetails: true });
-            highLevelLogger.detail('Should not log');
-
-            expect(mockNestLogger.debug).not.toHaveBeenCalled();
-        });
-    });
-
-    describe('lifecycle method', () => {
-        beforeEach(() => {
-            logger = new GrpcLogger({ level: 'log', context: 'TestService' });
-        });
-
-        it('should log lifecycle event without details', () => {
-            logger.lifecycle('Service started');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith('Service started');
-        });
-
-        it('should log lifecycle event with details', () => {
-            const details = { port: 50051, protocol: 'gRPC' };
-            logger.lifecycle('Service started', details);
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Service started {"port":50051,"protocol":"gRPC"}',
-            );
-        });
-
-        it('should log lifecycle event with context', () => {
-            logger.lifecycle('Service started', undefined, 'CustomContext');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith('Service started', 'CustomContext');
-        });
-
-        it('should log lifecycle event with details and context', () => {
-            const details = { port: 50051 };
-            logger.lifecycle('Service started', details, 'CustomContext');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Service started {"port":50051}',
-                'CustomContext',
-            );
-        });
-    });
-
-    describe('methodCall method', () => {
-        beforeEach(() => {
-            logger = new GrpcLogger({
-                level: 'debug',
-                logPerformance: true,
-                context: 'TestService',
-            });
-        });
-
-        it('should log method call without duration', () => {
-            logger.methodCall('login', 'AuthService');
-
-            expect(mockNestLogger.debug).toHaveBeenCalledWith('Method call: AuthService.login');
-        });
-
-        it('should log method call with duration and performance enabled', () => {
-            logger.methodCall('login', 'AuthService', 150);
-
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith(
-                'Method call: AuthService.login (150ms)',
-            );
-        });
-
-        it('should log method call with context', () => {
-            logger.methodCall('login', 'AuthService', undefined, 'CustomContext');
-
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(
-                'Method call: AuthService.login',
-                'CustomContext',
-            );
-        });
-
-        it('should log method call with duration but performance disabled', () => {
-            const noPerfLogger = new GrpcLogger({ level: 'debug', logPerformance: false });
-            noPerfLogger.methodCall('login', 'AuthService', 150);
-
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(
-                'Method call: AuthService.login (150ms)',
-            );
-        });
-
-        it('should log method call with duration and context', () => {
-            logger.methodCall('login', 'AuthService', 150, 'CustomContext');
-
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith(
-                'Method call: AuthService.login (150ms)',
-                'CustomContext',
-            );
-        });
-    });
-
-    describe('connection method', () => {
-        beforeEach(() => {
-            logger = new GrpcLogger({ level: 'log', context: 'TestService' });
-        });
-
-        it('should log connection event without details', () => {
-            logger.connection('Connected', 'localhost:50051');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith('Connected to localhost:50051');
-        });
-
-        it('should log connection event with details', () => {
-            const details = { secure: true, timeout: 5000 };
-            logger.connection('Connected', 'localhost:50051', details);
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Connected to localhost:50051 {"secure":true,"timeout":5000}',
-            );
-        });
-
-        it('should log connection event with context', () => {
-            logger.connection('Connected', 'localhost:50051', undefined, 'ConnectionManager');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Connected to localhost:50051',
-                'ConnectionManager',
-            );
-        });
-
-        it('should log connection event with details and context', () => {
-            const details = { secure: true };
-            logger.connection('Connected', 'localhost:50051', details, 'ConnectionManager');
-
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Connected to localhost:50051 {"secure":true}',
-                'ConnectionManager',
-            );
-        });
-    });
 
     describe('shouldLog private method', () => {
         it('should return false when logger is disabled', () => {
             const disabledLogger = new GrpcLogger({ enabled: false });
 
-            expect((disabledLogger as any).shouldLog('error')).toBe(false);
+            expect((disabledLogger as any).shouldLog(GrpcLogLevel.ERROR)).toBe(false);
         });
 
         it('should respect log level hierarchy', () => {
-            const warnLogger = new GrpcLogger({ level: 'warn' });
+            const warnLogger = new GrpcLogger({ level: GrpcLogLevel.WARN });
 
-            expect((warnLogger as any).shouldLog('debug')).toBe(false);
-            expect((warnLogger as any).shouldLog('verbose')).toBe(false);
-            expect((warnLogger as any).shouldLog('log')).toBe(false);
-            expect((warnLogger as any).shouldLog('warn')).toBe(true);
-            expect((warnLogger as any).shouldLog('error')).toBe(true);
+            expect((warnLogger as any).shouldLog(GrpcLogLevel.DEBUG)).toBe(false);
+            expect((warnLogger as any).shouldLog(GrpcLogLevel.VERBOSE)).toBe(false);
+            expect((warnLogger as any).shouldLog(GrpcLogLevel.LOG)).toBe(false);
+            expect((warnLogger as any).shouldLog(GrpcLogLevel.WARN)).toBe(true);
+            expect((warnLogger as any).shouldLog(GrpcLogLevel.ERROR)).toBe(true);
         });
 
         it('should handle debug level correctly', () => {
-            const debugLogger = new GrpcLogger({ level: 'debug' });
+            const debugLogger = new GrpcLogger({ level: GrpcLogLevel.DEBUG });
 
-            expect((debugLogger as any).shouldLog('debug')).toBe(true);
-            expect((debugLogger as any).shouldLog('verbose')).toBe(true);
-            expect((debugLogger as any).shouldLog('log')).toBe(true);
-            expect((debugLogger as any).shouldLog('warn')).toBe(true);
-            expect((debugLogger as any).shouldLog('error')).toBe(true);
+            expect((debugLogger as any).shouldLog(GrpcLogLevel.DEBUG)).toBe(true);
+            expect((debugLogger as any).shouldLog(GrpcLogLevel.VERBOSE)).toBe(true);
+            expect((debugLogger as any).shouldLog(GrpcLogLevel.LOG)).toBe(true);
+            expect((debugLogger as any).shouldLog(GrpcLogLevel.WARN)).toBe(true);
+            expect((debugLogger as any).shouldLog(GrpcLogLevel.ERROR)).toBe(true);
         });
 
         it('should handle error level correctly', () => {
-            const errorLogger = new GrpcLogger({ level: 'error' });
+            const errorLogger = new GrpcLogger({ level: GrpcLogLevel.ERROR });
 
-            expect((errorLogger as any).shouldLog('debug')).toBe(false);
-            expect((errorLogger as any).shouldLog('verbose')).toBe(false);
-            expect((errorLogger as any).shouldLog('log')).toBe(false);
-            expect((errorLogger as any).shouldLog('warn')).toBe(false);
-            expect((errorLogger as any).shouldLog('error')).toBe(true);
+            expect((errorLogger as any).shouldLog(GrpcLogLevel.DEBUG)).toBe(false);
+            expect((errorLogger as any).shouldLog(GrpcLogLevel.VERBOSE)).toBe(false);
+            expect((errorLogger as any).shouldLog(GrpcLogLevel.LOG)).toBe(false);
+            expect((errorLogger as any).shouldLog(GrpcLogLevel.WARN)).toBe(false);
+            expect((errorLogger as any).shouldLog(GrpcLogLevel.ERROR)).toBe(true);
         });
     });
 
@@ -521,9 +286,7 @@ describe('GrpcLogger - Comprehensive Tests', () => {
         it('should inherit parent logger options', () => {
             const parentLogger = new GrpcLogger({
                 context: 'ParentService',
-                level: 'debug',
-                logPerformance: true,
-                logDetails: true,
+                level: GrpcLogLevel.DEBUG,
             });
 
             const childLogger = parentLogger.child('ChildComponent');
@@ -553,87 +316,68 @@ describe('GrpcLogger - Comprehensive Tests', () => {
     });
 
     describe('integration scenarios', () => {
-        it('should handle complex logging scenario with all features', () => {
+        it('should handle logging with all methods in correct hierarchy', () => {
             const mainLogger = new GrpcLogger({
-                level: 'debug',
+                level: GrpcLogLevel.DEBUG,
                 context: 'GrpcService',
-                logPerformance: true,
-                logDetails: true,
-                logErrors: true,
             });
 
             const authLogger = mainLogger.child('Auth');
 
             // Test various logging methods
             authLogger.debug('Starting authentication');
-            authLogger.detail('User data', { id: 123, role: 'admin' });
-            authLogger.performance('Database lookup', 45);
-            authLogger.methodCall('authenticate', 'AuthService', 120);
-            authLogger.connection('Connected', 'auth-db:5432', { pool: true });
-            authLogger.lifecycle('Authentication completed', { userId: 123 });
+            authLogger.verbose('Processing request');
+            authLogger.log('User lookup');
+            authLogger.warn('No cache hit');
+            authLogger.error('Authentication failed', new Error('Invalid token'));
 
             expect(mockNestLogger.debug).toHaveBeenCalledWith('Starting authentication');
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(
-                'User data: {\n  "id": 123,\n  "role": "admin"\n}',
-            );
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith('Database lookup (45ms)');
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith(
-                'Method call: AuthService.authenticate (120ms)',
-            );
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Connected to auth-db:5432 {"pool":true}',
-            );
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Authentication completed {"userId":123}',
+            expect(mockNestLogger.verbose).toHaveBeenCalledWith('Processing request');
+            expect(mockNestLogger.log).toHaveBeenCalledWith('User lookup');
+            expect(mockNestLogger.warn).toHaveBeenCalledWith('No cache hit');
+            expect(mockNestLogger.error).toHaveBeenCalledWith(
+                'Authentication failed',
+                expect.stringContaining('Invalid token'),
             );
         });
 
-        it('should handle disabled features correctly', () => {
+        it('should handle disabled logging correctly', () => {
             const restrictedLogger = new GrpcLogger({
-                level: 'warn',
-                logPerformance: false,
-                logDetails: false,
-                logErrors: false,
+                level: GrpcLogLevel.WARN,
             });
 
-            // These should not log
+            // These should not log because they are below WARN level
             restrictedLogger.debug('Debug message');
             restrictedLogger.verbose('Verbose message');
             restrictedLogger.log('Log message');
-            restrictedLogger.performance('Performance', 100);
-            restrictedLogger.detail('Details', { data: 'test' });
-            restrictedLogger.error('Error message');
 
-            // Only warn should log
+            // Both warn and error should log because they are at or above WARN level
             restrictedLogger.warn('Warning message');
+            restrictedLogger.error('Error message');
 
             expect(mockNestLogger.debug).not.toHaveBeenCalled();
             expect(mockNestLogger.verbose).not.toHaveBeenCalled();
             expect(mockNestLogger.log).not.toHaveBeenCalled();
-            expect(mockNestLogger.error).not.toHaveBeenCalled();
             expect(mockNestLogger.warn).toHaveBeenCalledWith('Warning message');
+            expect(mockNestLogger.error).toHaveBeenCalledWith('Error message', undefined);
         });
 
-        it('should log performance metrics when enabled', () => {
-            const perfLogger = new GrpcLogger({ logPerformance: true, level: 'verbose' });
-            perfLogger.performance('Operation completed', 150);
-            expect(mockNestLogger.verbose).toHaveBeenCalledWith('Operation completed (150ms)');
+        it('should log at verbose level when enabled', () => {
+            const verboseLogger = new GrpcLogger({ level: GrpcLogLevel.VERBOSE });
+            verboseLogger.verbose('Operation in progress');
+            expect(mockNestLogger.verbose).toHaveBeenCalledWith('Operation in progress');
         });
 
-        it('should log details when enabled', () => {
-            const detailLogger = new GrpcLogger({ logDetails: true, level: 'debug' });
-            detailLogger.detail('Detail message', { key: 'value' });
-            expect(mockNestLogger.debug).toHaveBeenCalledWith(
-                'Detail message: {\n  "key": "value"\n}',
-            );
+        it('should log at debug level when enabled', () => {
+            const debugLogger = new GrpcLogger({ level: GrpcLogLevel.DEBUG });
+            debugLogger.debug('Debug information');
+            expect(mockNestLogger.debug).toHaveBeenCalledWith('Debug information');
         });
 
         it('should log lifecycle events', () => {
             const lifecycleLogger = new GrpcLogger({ context: 'TestService' });
-            lifecycleLogger.lifecycle('Service started', { service: 'TestService' });
-            expect(mockNestLogger.log).toHaveBeenCalledWith(
-                'Service started {"service":"TestService"}',
-            );
+            lifecycleLogger.log('Service started');
+            expect(mockNestLogger.log).toHaveBeenCalledWith('Service started');
         });
     });
 });

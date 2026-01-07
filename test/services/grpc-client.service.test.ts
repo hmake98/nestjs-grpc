@@ -7,7 +7,7 @@ import { EventEmitter } from 'events';
 import { GrpcClientService } from '../../src/services/grpc-client.service';
 import { GrpcProtoService } from '../../src/services/grpc-proto.service';
 import { GRPC_OPTIONS } from '../../src/constants';
-import { GrpcOptions } from '../../src/interfaces';
+import { GrpcLogLevel, GrpcOptions } from '../../src/interfaces';
 
 // Mock stream class with proper cleanup to prevent hanging
 class MockStream extends EventEmitter {
@@ -218,8 +218,8 @@ describe('GrpcClientService', () => {
             url: 'localhost:50051',
             logging: {
                 enabled: true,
-                level: 'debug',
-                logDetails: true,
+                level: GrpcLogLevel.DEBUG,
+                context: 'GrpcClientService',
             },
             maxSendMessageSize: 4 * 1024 * 1024,
             maxReceiveMessageSize: 4 * 1024 * 1024,
@@ -289,7 +289,7 @@ describe('GrpcClientService', () => {
         it('should log debug information when debug logging is enabled', () => {
             const optionsWithDebug = {
                 ...mockOptions,
-                logging: { enabled: true, level: 'debug' as const, logDetails: true },
+                logging: { enabled: true, level: GrpcLogLevel.DEBUG, context: 'GrpcClientService' },
             };
             expect(() => new GrpcClientService(optionsWithDebug, mockProtoService)).not.toThrow();
         });

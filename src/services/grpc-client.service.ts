@@ -98,10 +98,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
         }
 
         try {
-            this.logger.lifecycle('GrpcClientService starting', {
-                maxCacheSize: DEFAULT_CLIENT_CACHE_TTL,
-                cleanupInterval: DEFAULT_CLIENT_CLEANUP_INTERVAL,
-            });
+            this.logger.log('GrpcClientService starting');
 
             // Optionally trigger proto loading without blocking initialization
             // The proto service itself will load on its own onModuleInit in most cases
@@ -113,7 +110,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 this.cleanupStaleClients();
             }, DEFAULT_CLIENT_CLEANUP_INTERVAL);
 
-            this.logger.lifecycle('GrpcClientService started successfully');
+            this.logger.log('GrpcClientService started successfully');
         } catch (_error) {
             throw new Error('Failed to initialize GrpcClientService');
         }
@@ -125,7 +122,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
      */
     onModuleDestroy(): void {
         try {
-            this.logger.lifecycle('GrpcClientService shutting down');
+            this.logger.log('GrpcClientService shutting down');
 
             // Clear cleanup interval
             if (this.cleanupInterval) {
@@ -133,12 +130,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }
 
             // Close all active streams
-            let streamsClosedCount = 0;
+            let _streamsClosedCount = 0;
             for (const stream of this.activeStreams) {
                 try {
                     if (stream && typeof stream.cancel === 'function') {
                         stream.cancel();
-                        streamsClosedCount++;
+                        _streamsClosedCount++;
                     }
                 } catch (error) {
                     this.logger.warn('Error cancelling stream', error);
@@ -147,12 +144,12 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             this.activeStreams.clear();
 
             // Close all clients
-            let clientsClosedCount = 0;
+            let _clientsClosedCount = 0;
             for (const [key, cachedClient] of this.clients) {
                 try {
                     if (cachedClient.client && typeof cachedClient.client.close === 'function') {
                         cachedClient.client.close();
-                        clientsClosedCount++;
+                        _clientsClosedCount++;
                     }
                 } catch (error) {
                     this.logger.warn(`Error closing client ${key}`, error);
@@ -160,10 +157,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             }
             this.clients.clear();
 
-            this.logger.lifecycle('GrpcClientService shutdown complete', {
-                clientsClosed: clientsClosedCount,
-                streamsClosed: streamsClosedCount,
-            });
+            this.logger.log('GrpcClientService shutdown complete');
         } catch (error) {
             this.logger.error('Error during GrpcClientService cleanup', error);
         }
@@ -232,10 +226,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                 config: this.getConfigHash(clientOptions),
             });
 
-            this.logger.connection('Created gRPC client', serviceName, {
-                url: clientOptions.url,
-                secure: clientOptions.secure,
-            });
+            this.logger.debug(`Created gRPC client for ${serviceName}`);
             return client as T;
         } catch (error) {
             if (
@@ -305,7 +296,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             );
 
             const duration = Date.now() - startTime;
-            this.logger.performance(`${serviceName}.${methodName} completed`, duration);
+            this.logger.verbose(`${serviceName}.${methodName} completed (${duration}ms)`);
 
             return result as TResponse;
         } catch (error) {
@@ -357,7 +348,7 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
             this.create(serviceName, options)
                 .then(client => {
                     try {
-                        this.logger.methodCall(methodName, serviceName);
+                        this.logger.debug(`Calling server stream ${serviceName}.${methodName}`);
 
                         const stream = (client as any)[methodName](request);
                         this.activeStreams.add(stream);
@@ -385,9 +376,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         // Handle stream completion
                         stream.on('end', () => {
                             const duration = Date.now() - startTime;
-                            this.logger.performance(
-                                `Server stream ${serviceName}.${methodName} completed`,
-                                duration,
+                            this.logger.verbose(
+                                `Server stream ${serviceName}.${methodName} completed (${duration}ms)`,
                             );
                             this.activeStreams.delete(stream);
                             subscription.unsubscribe();
@@ -505,9 +495,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
 
                 stream.on('end', () => {
                     const duration = Date.now() - startTime;
-                    this.logger.performance(
-                        `Client stream ${serviceName}.${methodName} completed`,
-                        duration,
+                    this.logger.verbose(
+                        `Client stream ${serviceName}.${methodName} completed (${duration}ms)`,
                     );
                     this.activeStreams.delete(stream);
                 });
@@ -618,9 +607,8 @@ export class GrpcClientService implements OnModuleInit, OnModuleDestroy {
                         // Handle stream completion
                         stream.on('end', () => {
                             const duration = Date.now() - startTime;
-                            this.logger.performance(
-                                `Bidirectional stream ${serviceName}.${methodName} completed`,
-                                duration,
+                            this.logger.verbose(
+                                `Bidirectional stream ${serviceName}.${methodName} completed (${duration}ms)`,
                             );
                             this.activeStreams.delete(stream);
                             subscription.unsubscribe();

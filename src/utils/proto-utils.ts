@@ -5,8 +5,6 @@ import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import * as protobuf from 'protobufjs';
 
-import { DEFAULT_GRPC_CHANNEL_OPTIONS } from '../constants';
-
 import type { Options } from '@grpc/proto-loader';
 
 /**
@@ -295,7 +293,7 @@ function validateServiceName(serviceName: string): void {
 /**
  * Gets a package from a package definition by name with enhanced error handling
  */
-export function getPackageByName(
+function getPackageByName(
     packageDefinition: grpc.GrpcObject,
     packageName: string,
 ): grpc.GrpcObject | null {
@@ -324,7 +322,7 @@ export function getPackageByName(
             }
 
             if (!current[part]) {
-                return null; // Package not found
+                return null;
             }
 
             current = current[part] as grpc.GrpcObject;
@@ -333,144 +331,5 @@ export function getPackageByName(
         return current;
     } catch (error) {
         throw new Error(`Failed to find package '${packageName}': ${error.message}`);
-    }
-}
-
-/**
- * Gets a list of service methods from a service constructor with validation
- */
-export function getServiceMethods(serviceConstructor: any): string[] {
-    try {
-        if (!serviceConstructor) {
-            throw new Error('Service constructor is required');
-        }
-
-        if (typeof serviceConstructor !== 'function') {
-            throw new Error('Service constructor must be a function');
-        }
-
-        if (!serviceConstructor.service) {
-            // Note: This is a warning that should be logged by the calling service
-            return [];
-        }
-
-        const service = serviceConstructor.service;
-        let methods: string[] = [];
-
-        // Try different service structure formats
-        if (service.originalName && typeof service.originalName === 'object') {
-            methods = Object.keys(service.originalName);
-        } else if (service.methods && typeof service.methods === 'object') {
-            methods = Object.keys(service.methods);
-        } else if (service.methodsMap && typeof service.methodsMap === 'object') {
-            methods = Object.keys(service.methodsMap);
-        } else if (service.methods && Array.isArray(service.methods)) {
-            // Handle array of method objects
-            methods = service.methods.map((method: any) => method.name).filter(Boolean);
-        } else {
-            // Try to get methods from the service object itself
-            methods = Object.keys(service).filter(
-                key =>
-                    key !== 'service' && key !== 'constructor' && typeof service[key] === 'object',
-            );
-        }
-
-        // Filter out invalid method names
-        const validMethods = methods.filter(
-            method => method && typeof method === 'string' && method.trim().length > 0,
-        );
-
-        return validMethods;
-    } catch (_error) {
-        // Note: This error should be logged by the calling service
-        return [];
-    }
-}
-
-/**
- * Creates a gRPC client credential with validation
- */
-export function createClientCredentials(
-    secure = false,
-    rootCerts?: Buffer,
-    privateKey?: Buffer,
-    certChain?: Buffer,
-): grpc.ChannelCredentials {
-    try {
-        if (!secure) {
-            return grpc.credentials.createInsecure();
-        }
-
-        // Validate certificates if provided
-        if (rootCerts && !Buffer.isBuffer(rootCerts)) {
-            throw new Error('rootCerts must be a Buffer');
-        }
-
-        if (privateKey && !Buffer.isBuffer(privateKey)) {
-            throw new Error('privateKey must be a Buffer');
-        }
-
-        if (certChain && !Buffer.isBuffer(certChain)) {
-            throw new Error('certChain must be a Buffer');
-        }
-
-        return grpc.credentials.createSsl(rootCerts ?? null, privateKey ?? null, certChain ?? null);
-    } catch (error) {
-        throw new Error(`Failed to create client credentials: ${error.message}`);
-    }
-}
-
-/**
- * Creates channel options for a gRPC client with validation
- */
-export function createChannelOptions(
-    maxSendSize?: number,
-    maxReceiveSize?: number,
-    additionalOptions: Record<string, any> = {},
-): Record<string, any> {
-    try {
-        // Validate size parameters
-        if (maxSendSize !== undefined) {
-            if (!Number.isInteger(maxSendSize) || maxSendSize <= 0) {
-                throw new Error('maxSendSize must be a positive integer');
-            }
-        }
-
-        if (maxReceiveSize !== undefined) {
-            if (!Number.isInteger(maxReceiveSize) || maxReceiveSize <= 0) {
-                throw new Error('maxReceiveSize must be a positive integer');
-            }
-        }
-
-        if (additionalOptions && typeof additionalOptions !== 'object') {
-            throw new Error('additionalOptions must be an object');
-        }
-
-        const options: Record<string, any> = { ...DEFAULT_GRPC_CHANNEL_OPTIONS };
-
-        // Add size limits if specified
-        if (maxSendSize) {
-            options['grpc.max_send_message_length'] = maxSendSize;
-        }
-
-        if (maxReceiveSize) {
-            options['grpc.max_receive_message_length'] = maxReceiveSize;
-        }
-
-        // Merge additional options safely
-        const safeAdditionalOptions: Record<string, any> = {};
-
-        for (const [key, value] of Object.entries(additionalOptions || {})) {
-            if (typeof key === 'string' && key.trim().length > 0) {
-                safeAdditionalOptions[key] = value;
-            }
-        }
-
-        return {
-            ...options,
-            ...safeAdditionalOptions,
-        };
-    } catch (error) {
-        throw new Error(`Failed to create channel options: ${error.message}`);
     }
 }

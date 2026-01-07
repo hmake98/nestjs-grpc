@@ -12,6 +12,7 @@ import {
     ControllerMetadata,
     ServiceClientMetadata,
     GenerateCommandOptions,
+    GrpcLogLevel,
 } from '../../src/interfaces';
 import { GrpcErrorCode } from '../../src/constants';
 
@@ -20,19 +21,13 @@ describe('Interfaces', () => {
         it('should allow all logging options', () => {
             const loggingOptions: GrpcLoggingOptions = {
                 enabled: true,
-                level: 'debug',
+                level: GrpcLogLevel.DEBUG,
                 context: 'TestContext',
-                logErrors: true,
-                logPerformance: true,
-                logDetails: true,
             };
 
             expect(loggingOptions.enabled).toBe(true);
-            expect(loggingOptions.level).toBe('debug');
+            expect(loggingOptions.level).toBe(GrpcLogLevel.DEBUG);
             expect(loggingOptions.context).toBe('TestContext');
-            expect(loggingOptions.logErrors).toBe(true);
-            expect(loggingOptions.logPerformance).toBe(true);
-            expect(loggingOptions.logDetails).toBe(true);
         });
 
         it('should work with minimal options', () => {
@@ -43,11 +38,11 @@ describe('Interfaces', () => {
 
         it('should support all log levels', () => {
             const levels: GrpcLoggingOptions['level'][] = [
-                'debug',
-                'verbose',
-                'log',
-                'warn',
-                'error',
+                GrpcLogLevel.DEBUG,
+                GrpcLogLevel.VERBOSE,
+                GrpcLogLevel.LOG,
+                GrpcLogLevel.WARN,
+                GrpcLogLevel.ERROR,
             ];
 
             levels.forEach(level => {
@@ -84,7 +79,7 @@ describe('Interfaces', () => {
                 maxReceiveMessageSize: 2048,
                 logging: {
                     enabled: true,
-                    level: 'debug',
+                    level: GrpcLogLevel.DEBUG,
                 },
             };
 

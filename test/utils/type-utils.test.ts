@@ -1,6 +1,4 @@
 import {
-    snakeToCamel,
-    pascalToCamel,
     formatFieldName,
     formatMethodName,
     mapProtoTypeToTs,
@@ -32,45 +30,6 @@ describe('Type Utils', () => {
                 string: 'string',
                 bytes: 'Uint8Array',
             });
-        });
-    });
-
-    describe('snakeToCamel', () => {
-        it('should convert snake_case to camelCase', () => {
-            expect(snakeToCamel('test_service')).toBe('testService');
-            expect(snakeToCamel('get_user_by_id')).toBe('getUserById');
-            expect(snakeToCamel('user_id')).toBe('userId');
-            expect(snakeToCamel('first_name')).toBe('firstName');
-        });
-
-        it('should handle edge cases', () => {
-            expect(snakeToCamel('')).toBe('');
-            expect(snakeToCamel('a')).toBe('a');
-            expect(snakeToCamel('_')).toBe('_');
-            expect(snakeToCamel('__')).toBe('__');
-            expect(snakeToCamel('_a')).toBe('A'); // This matches the actual implementation
-            expect(snakeToCamel('a_')).toBe('a_');
-        });
-
-        it('should handle multiple underscores', () => {
-            expect(snakeToCamel('test__service')).toBe('test_Service');
-            expect(snakeToCamel('get___user')).toBe('get__User');
-        });
-    });
-
-    describe('pascalToCamel', () => {
-        it('should convert PascalCase to camelCase', () => {
-            expect(pascalToCamel('TestService')).toBe('testService');
-            expect(pascalToCamel('GetUserById')).toBe('getUserById');
-            expect(pascalToCamel('HTTPRequest')).toBe('hTTPRequest');
-            expect(pascalToCamel('XMLParser')).toBe('xMLParser');
-        });
-
-        it('should handle edge cases', () => {
-            expect(pascalToCamel('')).toBe('');
-            expect(pascalToCamel('a')).toBe('a');
-            expect(pascalToCamel('A')).toBe('a');
-            expect(pascalToCamel('AB')).toBe('aB');
         });
     });
 
@@ -801,15 +760,11 @@ describe('Type Utils', () => {
         });
 
         it('should handle empty string inputs', () => {
-            expect(snakeToCamel('')).toBe('');
-            expect(pascalToCamel('')).toBe('');
             expect(formatFieldName('')).toBe('');
             expect(formatMethodName('')).toBe('');
         });
 
         it('should handle single character inputs', () => {
-            expect(snakeToCamel('a')).toBe('a');
-            expect(pascalToCamel('A')).toBe('a');
             expect(formatFieldName('a')).toBe('a');
             expect(formatMethodName('A')).toBe('a');
         });

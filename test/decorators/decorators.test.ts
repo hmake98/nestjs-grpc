@@ -1,11 +1,10 @@
 import { GrpcController } from '../../src/decorators/grpc-controller.decorator';
 import { GrpcMethod } from '../../src/decorators/grpc-method.decorator';
-import { GrpcService, InjectGrpcClient } from '../../src/decorators/grpc-service.decorator';
+import { GrpcService } from '../../src/decorators/grpc-service.decorator';
 import {
     GRPC_CONTROLLER_METADATA,
     GRPC_METHOD_METADATA,
     GRPC_SERVICE_METADATA,
-    GRPC_CLIENT_TOKEN_PREFIX,
 } from '../../src/constants';
 
 describe('Decorators', () => {
@@ -234,43 +233,4 @@ describe('Decorators', () => {
         });
     });
 
-    describe('InjectGrpcClient', () => {
-        it('should create injection token for service', () => {
-            const token = `${GRPC_CLIENT_TOKEN_PREFIX}TestService`;
-
-            // Mock Reflect.defineMetadata to capture the parameters
-            const defineMetadataSpy = jest.spyOn(Reflect, 'defineMetadata');
-
-            class TestClass {
-                constructor(@InjectGrpcClient('TestService') private client: any) {}
-            }
-
-            // Check that the injection token was used
-            expect(defineMetadataSpy).toHaveBeenCalledWith(
-                'self:paramtypes',
-                [{ index: 0, param: 'GRPC_CLIENT_TestService' }],
-                TestClass,
-            );
-
-            defineMetadataSpy.mockRestore();
-        });
-
-        it('should throw error for empty service name', () => {
-            expect(() => {
-                InjectGrpcClient('');
-            }).toThrow('Service name is required and must be a string for @InjectGrpcClient');
-        });
-
-        it('should throw error for non-string service name', () => {
-            expect(() => {
-                InjectGrpcClient(null as any);
-            }).toThrow('Service name is required and must be a string for @InjectGrpcClient');
-        });
-
-        it('should throw error for whitespace only service name', () => {
-            expect(() => {
-                InjectGrpcClient('   ');
-            }).toThrow('Service name cannot be empty for @InjectGrpcClient');
-        });
-    });
 });

@@ -31,8 +31,8 @@ controller-based architecture**
 - 🛠️ **CLI Tools** - Generate TypeScript definitions from proto files with
   `nestjs-grpc generate`
 - 🔒 **Security** - Built-in TLS support and flexible authentication options
-- 📊 **Advanced Logging** - Configurable logging with multiple levels and
-  performance metrics
+- 📊 **Advanced Logging** - Configurable logging with GrpcLogLevel enum support
+  and flexible context configuration
 - 🔌 **Complete DI Support** - Inject any NestJS service into gRPC controllers
   and clients
 - 🔍 **Error Handling** - gRPC exception classes with proper status codes and
@@ -111,7 +111,7 @@ npx nestjs-grpc generate \
 ```typescript
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { GrpcModule } from 'nestjs-grpc';
+import { GrpcModule, GrpcLogLevel } from 'nestjs-grpc';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 
@@ -123,9 +123,8 @@ import { AuthService } from './auth.service';
             url: '0.0.0.0:50051',
             logging: {
                 enabled: true,
-                level: 'debug',
-                logErrors: true,
-                logPerformance: true,
+                level: GrpcLogLevel.DEBUG,
+                context: 'GrpcModule',
             },
         }),
     ],
@@ -227,64 +226,6 @@ export class AuthController {
 }
 ```
 
-### 5. Consumer Setup (gRPC Client)
-
-```typescript
-// post.module.ts - Service that consumes AuthService
-import { Module } from '@nestjs/common';
-import { GrpcModule } from 'nestjs-grpc';
-import { PostController } from './post.controller';
-import { PostService } from './post.service';
-import { GrpcAuthService } from './grpc-auth.service';
-
-@Module({
-    imports: [
-        // Setup own gRPC server
-        GrpcModule.forProvider({
-            protoPath: './protos/post.proto',
-            package: 'post',
-            url: '0.0.0.0:50052',
-        }),
-
-        // Setup gRPC clients for external services
-        GrpcModule.forConsumer({
-            serviceName: 'AuthService',
-            protoPath: './protos/auth.proto',
-            package: 'auth',
-            url: 'auth-service:50051',
-            timeout: 10000,
-            maxRetries: 3,
-            retryDelay: 1000,
-        }),
-    ],
-    controllers: [PostController],
-    providers: [PostService, GrpcAuthService],
-})
-export class PostModule {}
-
-// grpc-auth.service.ts
-import { Injectable } from '@nestjs/common';
-import { GrpcClientService } from 'nestjs-grpc';
-
-@Injectable()
-export class GrpcAuthService {
-    constructor(private readonly grpcClient: GrpcClientService) {}
-
-    async validateToken(token: string): Promise<boolean> {
-        try {
-            const result = await this.grpcClient.call<
-                ValidateTokenRequest,
-                ValidateTokenResponse
-            >('AuthService', 'ValidateToken', { token });
-            return result.valid;
-        } catch (error) {
-            console.error('Token validation failed:', error);
-            return false;
-        }
-    }
-}
-```
-
 ## 📖 Documentation
 
 ### Module Configuration
@@ -308,9 +249,8 @@ import { GrpcModule } from 'nestjs-grpc';
             maxReceiveMessageSize: 4 * 1024 * 1024, // 4MB
             logging: {
                 enabled: true,
-                level: 'log',
-                logErrors: true,
-                logPerformance: false,
+                level: GrpcLogLevel.LOG,
+                context: 'GrpcModule',
             },
         }),
     ],
@@ -321,27 +261,39 @@ export class ServiceModule {}
 
 #### Consumer Mode (Client)
 
-For services that call other gRPC services:
+For services that call other gRPC services, use the `@GrpcService` decorator:
 
 ```typescript
+import { Injectable } from '@nestjs/common';
+import { GrpcService, GrpcClientService } from 'nestjs-grpc';
+
+@GrpcService({
+    serviceName: 'ExternalService',
+    package: 'external',
+    url: 'external-service:50051',
+    clientOptions: {
+        timeout: 30000,
+        maxRetries: 3,
+        retryDelay: 1000,
+    },
+})
+@Injectable()
+export class ExternalServiceClient {
+    constructor(private readonly grpcClient: GrpcClientService) {}
+
+    async callExternalService(request: any): Promise<any> {
+        return this.grpcClient.call(
+            'ExternalService',
+            'YourMethod',
+            request,
+        );
+    }
+}
+
+// Use in module
 @Module({
-    imports: [
-        GrpcModule.forConsumer({
-            serviceName: 'ExternalService',
-            protoPath: './protos/external.proto',
-            package: 'external',
-            url: 'external-service:50051',
-            secure: false,
-            timeout: 30000, // 30 seconds
-            maxRetries: 3,
-            retryDelay: 1000, // 1 second
-            channelOptions: {
-                'grpc.keepalive_time_ms': 120000,
-                'grpc.keepalive_timeout_ms': 20000,
-            },
-        }),
-    ],
     providers: [ExternalServiceClient],
+    exports: [ExternalServiceClient],
 })
 export class ConsumerModule {}
 ```
@@ -360,13 +312,12 @@ export class ConsumerModule {}
                 url: configService.get('GRPC_URL'),
                 secure: configService.get('GRPC_SECURE') === 'true',
                 logging: {
+                    enabled: configService.get('GRPC_LOGGING_ENABLED') !== 'false',
                     level:
                         configService.get('NODE_ENV') === 'development'
-                            ? 'debug'
-                            : 'log',
-                    logErrors: true,
-                    logPerformance:
-                        configService.get('GRPC_LOG_PERFORMANCE') === 'true',
+                            ? GrpcLogLevel.DEBUG
+                            : GrpcLogLevel.LOG,
+                    context: 'GrpcModule',
                 },
             }),
         }),
@@ -951,19 +902,21 @@ describe('Streaming Methods', () => {
 
 ## 📊 Logging Configuration
 
+Logging is now configured using the `GrpcLogLevel` enum for type safety and clarity. The logging system supports three simple options: `enabled`, `level`, and `context`.
+
 ### Basic Logging Setup
 
 ```typescript
+import { GrpcLogLevel } from 'nestjs-grpc';
+
 GrpcModule.forProvider({
     protoPath: './protos/service.proto',
     package: 'service',
     url: 'localhost:50051',
     logging: {
         enabled: true,
-        level: 'debug', // debug, verbose, log, warn, error
-        logErrors: true, // Log all errors
-        logPerformance: true, // Log performance metrics
-        logDetails: true, // Log request/response details
+        level: GrpcLogLevel.DEBUG, // GrpcLogLevel.DEBUG | VERBOSE | LOG | WARN | ERROR
+        context: 'GrpcModule',
     },
 });
 ```
@@ -971,6 +924,8 @@ GrpcModule.forProvider({
 ### Environment-Based Logging
 
 ```typescript
+import { GrpcLogLevel } from 'nestjs-grpc';
+
 GrpcModule.forProviderAsync({
     inject: [ConfigService],
     useFactory: (config: ConfigService) => ({
@@ -979,14 +934,25 @@ GrpcModule.forProviderAsync({
         url: config.get('GRPC_URL'),
         logging: {
             enabled: config.get('GRPC_LOGGING_ENABLED', 'true') === 'true',
-            level: config.get('NODE_ENV') === 'development' ? 'debug' : 'log',
-            logErrors: true,
-            logPerformance:
-                config.get('GRPC_LOG_PERFORMANCE', 'false') === 'true',
-            logDetails: config.get('NODE_ENV') === 'development',
+            level: config.get('NODE_ENV') === 'development' ? GrpcLogLevel.DEBUG : GrpcLogLevel.LOG,
+            context: 'GrpcModule',
         },
     }),
 });
+```
+
+### GrpcLogLevel Enum
+
+The `GrpcLogLevel` enum provides type-safe log level selection:
+
+```typescript
+enum GrpcLogLevel {
+    DEBUG = 'debug',     // Detailed debug information
+    VERBOSE = 'verbose', // Verbose logging
+    LOG = 'log',         // General logging (default)
+    WARN = 'warn',       // Warning messages only
+    ERROR = 'error',     // Error messages only
+}
 ```
 
 ## 🔧 Configuration Options
@@ -1020,11 +986,8 @@ interface GrpcOptions {
     // Logging
     logging?: {
         enabled?: boolean; // Enable/disable logging (default: true)
-        level?: 'debug' | 'verbose' | 'log' | 'warn' | 'error'; // Log level (default: 'log')
+        level?: GrpcLogLevel; // Log level (default: GrpcLogLevel.LOG)
         context?: string; // Logger context (default: 'GrpcModule')
-        logErrors?: boolean; // Log errors (default: true)
-        logPerformance?: boolean; // Log performance metrics (default: false)
-        logDetails?: boolean; // Log request/response details (default: false)
     };
 }
 ```
@@ -1061,11 +1024,8 @@ interface GrpcConsumerOptions {
     // Logging
     logging?: {
         enabled?: boolean; // Enable/disable logging (default: true)
-        level?: 'debug' | 'verbose' | 'log' | 'warn' | 'error'; // Log level (default: 'log')
+        level?: GrpcLogLevel; // Log level (default: GrpcLogLevel.LOG)
         context?: string; // Logger context (default: 'GrpcModule')
-        logErrors?: boolean; // Log errors (default: true)
-        logPerformance?: boolean; // Log performance metrics (default: false)
-        logDetails?: boolean; // Log request/response details (default: false)
     };
 }
 ```
@@ -1143,6 +1103,8 @@ export class UserModule {}
 Use async configuration for dynamic settings:
 
 ```typescript
+import { GrpcLogLevel } from 'nestjs-grpc';
+
 @Module({
     imports: [
         GrpcModule.forProviderAsync({
@@ -1153,12 +1115,12 @@ Use async configuration for dynamic settings:
                 package: config.get('GRPC_PACKAGE'),
                 url: await config.get('GRPC_URL'), // Can be async
                 logging: {
+                    enabled: config.get('GRPC_LOGGING_ENABLED') !== 'false',
                     level:
                         process.env.NODE_ENV === 'production'
-                            ? 'warn'
-                            : 'debug',
-                    logPerformance:
-                        config.get('GRPC_LOG_PERFORMANCE') === 'true',
+                            ? GrpcLogLevel.WARN
+                            : GrpcLogLevel.DEBUG,
+                    context: 'GrpcModule',
                 },
             }),
         }),
@@ -1217,12 +1179,14 @@ GrpcModule.forProvider({
 ```typescript
 // Issue: Connection refused
 // Solution: Check server URL and ensure server is running
+import { GrpcLogLevel } from 'nestjs-grpc';
+
 GrpcModule.forProvider({
     protoPath: './protos/service.proto',
     package: 'service',
     url: 'localhost:50051', // Ensure server is running on this port
     logging: {
-        level: 'debug', // Enable debug logging
+        level: GrpcLogLevel.DEBUG, // Enable debug logging
     },
 });
 ```
@@ -1249,15 +1213,16 @@ async methodName(request: RequestType): Promise<ResponseType> {}
 Enable comprehensive debugging:
 
 ```typescript
+import { GrpcLogLevel } from 'nestjs-grpc';
+
 GrpcModule.forProvider({
     protoPath: './protos/service.proto',
     package: 'service',
     url: 'localhost:50051',
     logging: {
-        level: 'debug',
-        logErrors: true,
-        logPerformance: true,
-        logDetails: true,
+        enabled: true,
+        level: GrpcLogLevel.DEBUG,
+        context: 'GrpcModule',
     },
 });
 ```
@@ -1287,6 +1252,9 @@ GrpcModule.forProvider({
 
 - **99.87% Test Coverage**: Achieved exceptional test coverage with
   comprehensive edge case testing
+- **SWC Compiler Integration**: 31ms compilation time vs 500ms+ with TypeScript
+- **@swc/jest for Tests**: Significantly faster test execution while maintaining
+  full TypeScript and decorator support
 - Optimized connection pooling with automatic cleanup
 - Enhanced logging performance with configurable levels
 - Improved retry logic with exponential backoff
@@ -1295,8 +1263,13 @@ GrpcModule.forProvider({
 
 - Removed automatic global exception filter registration - applications now
   handle their own exception filters
+- **Logging system updated**: Removed deprecated logging options (logErrors,
+  logPerformance, logDetails). Logging now uses GrpcLogLevel enum with 3
+  options: enabled, level, context
+- **Removed InjectGrpcClient decorator** if previously mentioned in code
 - Changed some service methods from async to synchronous for better performance
 - Updated CLI option defaults for better developer experience
+- **ts-jest removed**: Replaced with @swc/jest for faster test execution
 
 #### 📚 **Documentation**
 
@@ -1343,6 +1316,8 @@ This project maintains high code quality standards:
 
 ### Running Tests
 
+This project uses **@swc/jest** for fast test execution instead of ts-jest:
+
 ```bash
 # Run all tests with coverage (recommended)
 npm test
@@ -1359,6 +1334,61 @@ npm run test:debug
 # Run tests with clean cache
 npm run test:clean
 ```
+
+The SWC/Jest integration in `jest.config.json` provides significantly faster test execution while maintaining full TypeScript and decorator support.
+
+### Build Process
+
+This project uses a hybrid build approach for optimal compilation speed and type safety:
+
+**Build Commands:**
+```bash
+# Full build (recommended for production)
+npm run build
+
+# Compile TypeScript to JavaScript using SWC (31ms for 28 files)
+npm run compile
+
+# Generate TypeScript declaration files (.d.ts)
+npm run declarations
+
+# Watch mode for development (uses SWC compilation)
+npm run build:watch
+
+# Build with TypeScript only (slower, for comparison)
+npm run compile:tsc
+```
+
+**Build Process Breakdown:**
+
+1. **npm run compile** - Uses SWC for blazing fast compilation:
+   - Compiles ~31ms for 28 files
+   - No type checking (faster)
+   - Produces optimized JavaScript
+
+2. **npm run declarations** - Uses TypeScript for type generation:
+   - Generates .d.ts files for type support
+   - Runs with `--emitDeclarationOnly` flag
+   - Ensures proper TypeScript integration
+
+3. **npm run build** - Complete production build:
+   - Cleans dist directory
+   - Compiles with SWC
+   - Generates TypeScript declarations
+   - Copies CLI binary files
+
+**Why SWC?**
+
+SWC (Speedy Web Compiler) provides:
+- **Lightning-fast compilation**: ~31ms vs ~500ms+ with TypeScript
+- **Production-ready output**: Optimized JavaScript with proper ES module support
+- **Full TypeScript support**: Decorators and advanced features work seamlessly
+- **Jest integration**: @swc/jest provides fast test execution without sacrificing functionality
+
+**Performance Comparison:**
+- SWC compilation: ~31ms
+- TypeScript compilation: ~500-1000ms
+- Test execution with @swc/jest: Significantly faster than ts-jest
 
 ### Release Process
 

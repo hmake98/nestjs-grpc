@@ -33,7 +33,7 @@ export class GrpcRegistryService implements OnModuleInit {
      * Processes any pending controller registrations.
      */
     onModuleInit(): void {
-        this.logger.lifecycle('Processing pending controller registrations');
+        this.logger.log('Processing pending controller registrations');
         this.processPendingRegistrations();
     }
 
@@ -82,27 +82,23 @@ export class GrpcRegistryService implements OnModuleInit {
 
         try {
             const registrations = Array.from(this.pendingRegistrations.entries());
-            let successCount = 0;
-            let errorCount = 0;
+            let _successCount = 0;
+            let _errorCount = 0;
 
             for (const [serviceName, { instance, metadata }] of registrations) {
                 try {
                     this.providerService.registerController(serviceName, instance, metadata);
-                    successCount++;
+                    _successCount++;
                 } catch (error) {
                     this.logger.error(
                         `Failed to register pending controller ${serviceName}`,
                         error,
                     );
-                    errorCount++;
+                    _errorCount++;
                 }
             }
 
-            this.logger.lifecycle('Pending registrations processed', {
-                total: registrations.length,
-                successful: successCount,
-                failed: errorCount,
-            });
+            this.logger.log('Pending registrations processed');
 
             // Clear processed registrations
             this.pendingRegistrations.clear();

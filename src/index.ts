@@ -7,12 +7,20 @@ export { GrpcModule } from './grpc.module';
 export { GrpcErrorCode, RETRYABLE_STATUS_CODES, TYPE_MAPPING } from './constants';
 
 // Decorators
-export { GrpcController, GrpcMethod } from './decorators';
+export {
+    GrpcController,
+    GrpcMethod,
+    GrpcService,
+    GrpcPayload,
+    GrpcStream,
+    GrpcStreamPayload,
+} from './decorators';
 
 // Exceptions
 export { GrpcException } from './exceptions/grpc.exception';
 
-// Interfaces
+// Interfaces & Types
+export { GrpcLogLevel } from './utils/enums';
 export type {
     GrpcOptions,
     GrpcClientOptions,
@@ -47,7 +55,6 @@ export { GrpcProtoService } from './services/grpc-proto.service';
 export { GrpcLogger } from './utils/logger';
 
 // Consumer functionality
-// Note: Consumer functionality removed - use GrpcClientService directly
 export {
     GrpcConsumerErrorHandler,
     GrpcConsumerException,

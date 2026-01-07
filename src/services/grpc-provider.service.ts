@@ -51,16 +51,12 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
      */
     async onModuleInit(): Promise<void> {
         try {
-            this.logger.lifecycle('Starting gRPC provider');
+            this.logger.log('Starting gRPC provider');
 
             this.createServer();
             await this.startServer();
 
-            this.logger.lifecycle('gRPC provider started successfully', {
-                url: this.options.url ?? 'localhost:50051',
-                secure: this.options.secure ?? false,
-                controllers: this.controllerInstances.size,
-            });
+            this.logger.log('gRPC provider started successfully');
         } catch (error) {
             this.logger.error('Failed to start gRPC provider', error as Error);
             throw error;
@@ -73,9 +69,9 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
      */
     async onModuleDestroy(): Promise<void> {
         try {
-            this.logger.lifecycle('Shutting down gRPC provider');
+            this.logger.log('Shutting down gRPC provider');
             await this.stopServer();
-            this.logger.lifecycle('gRPC provider shutdown complete');
+            this.logger.log('gRPC provider shutdown complete');
         } catch (error) {
             this.logger.error('Error during gRPC provider shutdown', error as Error);
         }
@@ -263,9 +259,8 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
                 const result = await method.call(controllerInstance, request);
 
                 const duration = Date.now() - startTime;
-                this.logger.performance(
-                    `${serviceName}.${controllerMethodName} completed`,
-                    duration,
+                this.logger.verbose(
+                    `${serviceName}.${controllerMethodName} completed (${duration}ms)`,
                 );
 
                 // Send response
@@ -350,7 +345,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
                 reject(new Error('Server not initialized')); /* istanbul ignore next */
                 return;
             }
-            this.server.bindAsync(url, credentials, (error, port) => {
+            this.server.bindAsync(url, credentials, (error, _port) => {
                 if (error) {
                     reject(new Error(`Failed to bind server to ${url}: ${error.message}`));
                     return;
@@ -361,11 +356,7 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
                 // Register any pending controller instances that were registered before server was running
                 this.registerPendingControllers()
                     .then(() => {
-                        this.logger.lifecycle('gRPC server started', {
-                            url,
-                            port,
-                            secure: this.options.secure,
-                        });
+                        this.logger.log('gRPC server started');
                         resolve();
                     })
                     .catch(registerError => {

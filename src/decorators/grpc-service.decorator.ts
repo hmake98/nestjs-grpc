@@ -1,6 +1,6 @@
-import { Inject, SetMetadata } from '@nestjs/common';
+import { SetMetadata } from '@nestjs/common';
 
-import { GRPC_SERVICE_METADATA, GRPC_CLIENT_TOKEN_PREFIX } from '../constants';
+import { GRPC_SERVICE_METADATA } from '../constants';
 
 import type { GrpcServiceOptions } from '../interfaces';
 
@@ -12,12 +12,17 @@ import type { GrpcServiceOptions } from '../interfaces';
  *
  * @example
  * ```typescript
- * @GrpcService('AuthService')
+ * @GrpcService({
+ *   serviceName: 'AuthService',
+ *   package: 'auth',
+ *   url: 'auth-service:50051',
+ * })
+ * @Injectable()
  * export class AuthServiceClient {
- *   constructor(@InjectGrpcClient('AuthService') private client: any) {}
+ *   constructor(private readonly grpcClient: GrpcClientService) {}
  *
  *   async login(request: LoginRequest): Promise<LoginResponse> {
- *     return this.client.call('login', request);
+ *     return this.grpcClient.call('AuthService', 'Login', request);
  *   }
  * }
  * ```
@@ -46,35 +51,4 @@ export function GrpcService(serviceNameOrOptions: string | GrpcServiceOptions): 
 
         return target;
     };
-}
-
-/**
- * Decorator that injects a gRPC client for a specific service.
- * Used in service classes to inject the gRPC client for making calls.
- *
- * @param serviceName The name of the gRPC service to inject
- *
- * @example
- * ```typescript
- * @GrpcService('AuthService')
- * export class AuthServiceClient {
- *   constructor(@InjectGrpcClient('AuthService') private client: any) {}
- *
- *   async login(request: LoginRequest): Promise<LoginResponse> {
- *     return this.client.call('login', request);
- *   }
- * }
- * ```
- */
-export function InjectGrpcClient(serviceName: string): ParameterDecorator {
-    if (!serviceName || typeof serviceName !== 'string') {
-        throw new Error('Service name is required and must be a string for @InjectGrpcClient');
-    }
-
-    if (serviceName.trim().length === 0) {
-        throw new Error('Service name cannot be empty for @InjectGrpcClient');
-    }
-
-    const token = `${GRPC_CLIENT_TOKEN_PREFIX}${serviceName}`;
-    return Inject(token);
 }

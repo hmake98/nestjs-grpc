@@ -5,6 +5,7 @@ import { globSync } from 'glob';
 import * as protobuf from 'protobufjs';
 
 import { generateTypeDefinitions } from '../utils';
+import { GrpcLogLevel } from '../utils/enums';
 import { GrpcLogger } from '../utils/logger';
 
 import type { GenerateCommandOptions } from '../interfaces';
@@ -14,7 +15,7 @@ import type { GenerateCommandOptions } from '../interfaces';
  */
 const logger = new GrpcLogger({
     context: 'GenerateCommand',
-    level: 'log',
+    level: GrpcLogLevel.LOG,
 });
 
 /**
@@ -73,7 +74,7 @@ function normalizeProtoPath(protoPath: string, silent: boolean): string {
             const result = `${normalizedPath}**/*.proto`;
 
             if (!silent) {
-                logger.lifecycle('Directory detected, using pattern', { pattern: result });
+                logger.log('Directory detected, using pattern');
             }
 
             return result;
@@ -140,7 +141,7 @@ function ensureOutputDirectory(outputPath: string, silent: boolean): void {
 
         if (!existsSync(outputDir)) {
             if (!silent) {
-                logger.lifecycle('Creating directory', { path: outputDir });
+                logger.log('Creating directory');
             }
             mkdirSync(outputDir, { recursive: true });
         }
@@ -234,7 +235,7 @@ async function generateTypesForFile(
 ): Promise<void> {
     try {
         if (!silent) {
-            logger.lifecycle('Processing proto file', { file: protoFile });
+            logger.log('Processing proto file');
         }
 
         const outputFile = getOutputPath(protoFile, outputDir);
@@ -254,10 +255,7 @@ async function generateTypesForFile(
         writeTypesToFile(typeDefinitions, outputFile);
 
         if (!silent) {
-            logger.lifecycle('Generated types successfully', {
-                input: protoFile,
-                output: outputFile,
-            });
+            logger.log('Generated types successfully');
         }
     } catch (error) {
         // Log error and rethrow to indicate processing failure
@@ -286,7 +284,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
         }
 
         if (!options.silent) {
-            logger.lifecycle('Found proto files', { count: protoFiles.length });
+            logger.log(`Found ${protoFiles.length} proto files`);
         }
 
         // Create type generation options
@@ -315,10 +313,7 @@ export async function generateCommand(options: GenerateCommandOptions): Promise<
 
         // Report results
         if (!options.silent) {
-            logger.lifecycle('Processing complete', {
-                succeeded: processedCount,
-                failed: errorCount,
-            });
+            logger.log('Processing complete');
         }
 
         if (processedCount === 0) {
