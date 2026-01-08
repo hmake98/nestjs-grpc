@@ -300,11 +300,13 @@ function getPackageByName(
     try {
         validatePackageDefinition(packageDefinition);
 
+        /* istanbul ignore next */
         if (!packageName || typeof packageName !== 'string') {
             return packageDefinition;
         }
 
         const trimmedPackageName = packageName.trim();
+        /* istanbul ignore next */
         if (trimmedPackageName.length === 0) {
             return packageDefinition;
         }

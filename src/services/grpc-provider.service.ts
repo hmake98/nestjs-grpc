@@ -341,8 +341,9 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         const credentials = this.createServerCredentials();
 
         return new Promise<void>((resolve, reject) => {
+            /* istanbul ignore next */
             if (!this.server) {
-                reject(new Error('Server not initialized')); /* istanbul ignore next */
+                reject(new Error('Server not initialized'));
                 return;
             }
             this.server.bindAsync(url, credentials, (error, _port) => {
@@ -403,8 +404,9 @@ export class GrpcProviderService implements OnModuleInit, OnModuleDestroy {
         }
 
         return new Promise<void>(resolve => {
+            /* istanbul ignore next */
             if (!this.server) {
-                resolve(); /* istanbul ignore next */
+                resolve();
                 return;
             }
             this.server.tryShutdown(error => {

@@ -427,17 +427,6 @@ describe('GrpcClientService', () => {
     });
 
     describe('create', () => {
-        beforeEach(() => {
-            const {
-                createClientCredentials,
-                createChannelOptions,
-                getServiceMethods,
-            } = require('../../src/utils/proto-utils');
-
-            createClientCredentials.mockReturnValue({});
-            createChannelOptions.mockReturnValue({});
-            getServiceMethods.mockReturnValue(['testMethod']);
-        });
 
         it('should handle URL option validation', async () => {
             const mockProtoDefinition = { TestService: jest.fn() };

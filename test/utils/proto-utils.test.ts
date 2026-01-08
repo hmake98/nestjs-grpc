@@ -479,4 +479,82 @@ describe('Proto Utils - Comprehensive Tests', () => {
             );
         });
     });
+
+    describe('getPackageByName (private function tested through getServiceByName edge cases)', () => {
+        it('should handle package name with consecutive dots (empty parts)', () => {
+            // This creates a package name with empty parts when split
+            const mockService = jest.fn();
+            const mockPackageDefinition = {
+                com: {
+                    example: {
+                        TestService: mockService,
+                    },
+                },
+            } as any;
+
+            // Package name 'com..example' has consecutive dots and will create empty parts
+            expect(() =>
+                getServiceByName(mockPackageDefinition, 'com..example', 'TestService'),
+            ).toThrow('Package name contains empty parts');
+        });
+
+        it('should handle non-object intermediate package structure', () => {
+            const mockService = jest.fn();
+            const mockPackageDefinition = {
+                com: 'not an object', // Non-object at intermediate level
+            };
+
+            expect(() =>
+                getServiceByName(mockPackageDefinition as any, 'com.example', 'TestService'),
+            ).toThrow('Invalid package structure at \'example\'');
+        });
+
+        it('should handle missing nested package returning null', () => {
+            const mockPackageDefinition = {
+                com: {
+                    // Missing the 'example' key
+                    other: {},
+                },
+            } as any;
+
+            expect(() =>
+                getServiceByName(mockPackageDefinition, 'com.example', 'TestService'),
+            ).toThrow("Package 'com.example' not found");
+        });
+
+        it('should handle root package when requesting direct service', () => {
+            const mockService = jest.fn();
+            const mockPackageDefinition = {
+                TestService: mockService,
+            } as any;
+
+            // Test root-level package lookup
+            expect(() =>
+                getServiceByName(mockPackageDefinition, 'com', 'TestService'),
+            ).toThrow("Package 'com' not found");
+        });
+
+        it('should handle deeply nested package structure with non-object', () => {
+            const mockPackageDefinition = {
+                com: {
+                    example: {
+                        auth: 'not an object', // Non-object in deep structure
+                    },
+                },
+            };
+
+            expect(() =>
+                getServiceByName(mockPackageDefinition as any, 'com.example.auth.v1', 'TestService'),
+            ).toThrow('Invalid package structure');
+        });
+
+        it('should handle package name with all dots (invalid format)', () => {
+            const mockPackageDefinition = {} as any;
+
+            // Package name that contains only dots will fail regex validation before reaching getPackageByName
+            expect(() =>
+                getServiceByName(mockPackageDefinition, '...', 'TestService'),
+            ).toThrow('Package name contains invalid characters');
+        });
+    });
 });

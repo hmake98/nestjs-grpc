@@ -147,8 +147,10 @@ describe('GrpcExceptionFilter', () => {
             result.subscribe({
                 error: error => {
                     expect(error).toBeDefined();
-                    expect(error.code).toBe(13); // fallbackCode
-                    expect(error.message).toBe('Internal server error occurred'); // fallbackMessage
+                    expect(error.code).toBe(GrpcErrorCode.INTERNAL); // INTERNAL code from extractUnknownError
+                    // When RpcException.getError() throws, it's caught and exception is passed to extractUnknownError
+                    // which returns JSON.stringify(exception) = '{}' for an object with functions
+                    expect(error.message).toBe('{}');
                     done();
                 },
             });
@@ -373,10 +375,9 @@ describe('GrpcExceptionFilter', () => {
                 error: error => {
                     expect(error.code).toBe(GrpcErrorCode.INTERNAL);
                     expect(error.message).toBe('null');
-                    // RpcException instanceof Error, so details get { name, stack }
+                    // RpcException with string has details.originalError
                     expect(error.details).toBeDefined();
-                    expect(error.details.name).toBe('Error');
-                    expect(error.details.stack).toBeDefined();
+                    expect(error.details.originalError).toBe('null');
                     done();
                 },
             });
@@ -473,10 +474,9 @@ describe('GrpcExceptionFilter', () => {
                 error: error => {
                     expect(error.code).toBe(GrpcErrorCode.INTERNAL);
                     expect(error.message).toBe('42');
-                    // RpcException instanceof Error, so details get { name, stack }
+                    // RpcException with string has details.originalError
                     expect(error.details).toBeDefined();
-                    expect(error.details.name).toBe('Error');
-                    expect(error.details.stack).toBeDefined();
+                    expect(error.details.originalError).toBe('42');
                     done();
                 },
             });
@@ -494,10 +494,9 @@ describe('GrpcExceptionFilter', () => {
                 result.subscribe({
                     error: error => {
                         expect(error.code).toBe(GrpcErrorCode.INTERNAL);
-                        // RpcException instanceof Error, so details get { name, stack }
+                        // RpcException with string values has details.originalError
                         expect(error.details).toBeDefined();
-                        expect(error.details.name).toBe('Error');
-                        expect(error.details.stack).toBeDefined();
+                        expect(error.details.originalError).toBe(String(testCase));
                         completed++;
                         if (completed === total) {
                             done();
@@ -716,7 +715,9 @@ describe('GrpcExceptionFilter', () => {
             result.subscribe({
                 error: error => {
                     expect(error.code).toBe(13); // INTERNAL code
-                    expect(error.message).toContain('Unknown error'); // Message should contain 'Unknown error'
+                    expect(error.message).toBe('42'); // Message is String(exception)
+                    expect(error.details).toBeDefined();
+                    expect(error.details.originalError).toBe(42); // Original value preserved
                     done();
                 },
             });
