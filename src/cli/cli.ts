@@ -34,7 +34,7 @@ function getPackageVersion(): string {
         try {
             const packageContent = readFileSync(packagePath, 'utf8');
             const packageJson = JSON.parse(packageContent);
-            if (packageJson && packageJson.version) {
+            if (packageJson?.version) {
                 return packageJson.version;
             }
         } catch (_err) {
