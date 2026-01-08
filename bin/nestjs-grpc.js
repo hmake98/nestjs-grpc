@@ -13,8 +13,13 @@ const path = require('path');
  */
 function findCliModule() {
     const possiblePaths = [
+        // Common layout when compiled into dist/*
         path.join(__dirname, '..', 'cli', 'cli.js'),
         path.join(__dirname, '..', 'index.js'),
+        // In some build setups (e.g. SWC/tsc into `dist/src`) the compiled
+        // files live under `dist/src/...` rather than `dist/...`. Check both.
+        path.join(__dirname, '..', 'src', 'cli', 'cli.js'),
+        path.join(__dirname, '..', 'src', 'index.js'),
     ];
 
     for (const testPath of possiblePaths) {
@@ -93,5 +98,12 @@ process.on('unhandledRejection', reason => {
     process.exit(1);
 });
 
-// Start the CLI
-main();
+// Start the CLI only if this script is the main module (prevents auto-run during tests)
+if (require.main === module) {
+    main();
+}
+
+// Export for tests
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports.findCliModule = findCliModule;
+}

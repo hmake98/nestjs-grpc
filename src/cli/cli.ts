@@ -21,11 +21,29 @@ const logger = new GrpcLogger({
  * Safely read package version with fallback
  */
 function getPackageVersion(): string {
-    const packagePath = join(__dirname, '..', '..', 'package.json');
-    const packageContent = readFileSync(packagePath, 'utf8');
-    const packageJson = JSON.parse(packageContent);
+    // Try a few candidate locations for package.json. When running from the
+    // compiled `dist` folder the package.json may live in the repository root
+    // (e.g. `../../..`) rather than next to the compiled files.
+    const candidates = [
+        join(__dirname, '..', '..', 'package.json'),
+        join(__dirname, '..', '..', '..', 'package.json'),
+        join(process.cwd(), 'package.json'),
+    ];
 
-    return packageJson.version;
+    for (const packagePath of candidates) {
+        try {
+            const packageContent = readFileSync(packagePath, 'utf8');
+            const packageJson = JSON.parse(packageContent);
+            if (packageJson && packageJson.version) {
+                return packageJson.version;
+            }
+        } catch (_err) {
+            // ignore and try next candidate
+        }
+    }
+
+    // As a last resort return a placeholder
+    return 'unknown';
 }
 
 /**
