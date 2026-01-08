@@ -760,5 +760,223 @@ describe('GrpcExceptionFilter', () => {
                 },
             });
         });
+
+        it('should handle filter error fallback when exception processing fails (line 55-69)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true, fallbackCode: 13, fallbackMessage: 'Internal server error' });
+            const warnSpy = jest.spyOn((mockFilter as any).logger, 'warn');
+            const errorSpy = jest.spyOn((mockFilter as any).logger, 'error');
+
+            // Spy on normalizeError to make it throw
+            jest.spyOn(mockFilter as any, 'normalizeError').mockImplementation(() => {
+                throw new Error('normalizeError failed');
+            });
+
+            const result = mockFilter.catch(new Error('test error'), mockHost);
+
+            result.subscribe({
+                error: error => {
+                    // Should use fallback error code
+                    expect(error.code).toBe(13);
+                    expect(errorSpy).toHaveBeenCalledWith('Exception filter failed to process error', expect.any(Error));
+                    expect(warnSpy).toHaveBeenCalledWith('Using fallback error response');
+                    done();
+                },
+            });
+        });
+
+        it('should handle logging error when error details logging fails (line 207)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+            const warnSpy = jest.spyOn((mockFilter as any).logger, 'warn');
+
+            // Make safeSerializeDetails throw to trigger the logging error path
+            jest.spyOn(mockFilter as any, 'safeSerializeDetails').mockImplementation(() => {
+                throw new Error('Serialization failed');
+            });
+
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.NOT_FOUND,
+                message: 'Test error',
+                details: { some: 'data' },
+            });
+
+            const result = mockFilter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(warnSpy).toHaveBeenCalledWith('Failed to log error details', expect.any(String));
+                    done();
+                },
+            });
+        });
+
+        it('should handle serialization failure with type info fallback (line 228-232)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            // Create an object that will fail serialization but provide type info
+            const problematicObject = {
+                get inspect() {
+                    throw new Error('Serialization failed');
+                },
+                toJSON() {
+                    throw new Error('Cannot serialize');
+                },
+            };
+
+            const rpcException = new RpcException(problematicObject);
+            const result = mockFilter.catch(rpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    done();
+                },
+            });
+        });
+
+        it('should handle circular reference in details (line 248)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            const circularObj: any = { name: 'test' };
+            circularObj.self = circularObj;
+
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.INVALID_ARGUMENT,
+                message: 'Test error',
+                details: circularObj,
+            });
+
+            const result = mockFilter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+                    done();
+                },
+            });
+        });
+
+        it('should handle large arrays in serialization (line 255-257)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            // Create a large array
+            const largeArray = Array.from({ length: 20 }, (_, i) => i);
+
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.INVALID_ARGUMENT,
+                message: 'Test error',
+                details: { items: largeArray },
+            });
+
+            const result = mockFilter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+                    done();
+                },
+            });
+        });
+
+        it('should handle error reading object property (line 269)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            // Create an object with a property that throws when accessed
+            const problematicObject = Object.create(null);
+            Object.defineProperty(problematicObject, 'badProp', {
+                get() {
+                    throw new Error('Cannot read property');
+                },
+                enumerable: true,
+            });
+
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.INVALID_ARGUMENT,
+                message: 'Test error',
+                details: problematicObject,
+            });
+
+            const result = mockFilter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+                    done();
+                },
+            });
+        });
+
+        it('should handle objects with many keys in serialization', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            // Create an object with many keys
+            const largeObject: Record<string, number> = {};
+            for (let i = 0; i < 15; i++) {
+                largeObject[`key${i}`] = i;
+            }
+
+            const grpcException = new GrpcException({
+                code: GrpcErrorCode.INVALID_ARGUMENT,
+                message: 'Test error',
+                details: largeObject,
+            });
+
+            const result = mockFilter.catch(grpcException, mockHost);
+
+            result.subscribe({
+                error: error => {
+                    expect(error).toBeDefined();
+                    expect(error.code).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+                    done();
+                },
+            });
+        });
+
+        it('should handle JSON stringify failure with type info fallback (line 228-232)', done => {
+            const mockFilter = new GrpcExceptionFilter({ enableLogging: true });
+
+            // Save the original JSON.stringify and Object.prototype.toString
+            const originalStringify = JSON.stringify;
+            const originalToString = Object.prototype.toString;
+
+            // Mock JSON.stringify to throw
+            JSON.stringify = jest.fn().mockImplementation(() => {
+                throw new Error('Stringify failed');
+            });
+
+            // Mock Object.prototype.toString to also throw to hit line 232
+            Object.prototype.toString = jest.fn().mockImplementation(() => {
+                throw new Error('toString failed');
+            });
+
+            try {
+                const grpcException = new GrpcException({
+                    code: GrpcErrorCode.INVALID_ARGUMENT,
+                    message: 'Test error',
+                    details: { test: 'data' },
+                });
+
+                const result = mockFilter.catch(grpcException, mockHost);
+
+                result.subscribe({
+                    error: error => {
+                        expect(error).toBeDefined();
+                        expect(error.code).toBe(GrpcErrorCode.INVALID_ARGUMENT);
+                        // Restore original methods
+                        JSON.stringify = originalStringify;
+                        Object.prototype.toString = originalToString;
+                        done();
+                    },
+                });
+            } catch (e) {
+                // Restore original methods on error
+                JSON.stringify = originalStringify;
+                Object.prototype.toString = originalToString;
+                throw e;
+            }
+        });
     });
 });
