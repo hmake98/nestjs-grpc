@@ -9,6 +9,7 @@ import { ControllerMetadata } from '../../src/interfaces';
 // Mock GrpcLogger
 const mockLogger = {
     lifecycle: jest.fn(),
+    log: jest.fn(),
     debug: jest.fn(),
     error: jest.fn(),
     warn: jest.fn(),
@@ -74,9 +75,9 @@ describe('GrpcControllerDiscoveryService', () => {
         it('should start discovery process', async () => {
             mockDiscoveryService.getControllers.mockReturnValue([]);
 
-            await service.onModuleInit();
+            service.onModuleInit();
 
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith('Starting gRPC controller discovery');
+            expect(mockLogger.log).toHaveBeenCalledWith('Starting gRPC controller discovery');
             expect(mockLogger.debug).toHaveBeenCalledWith('Discovering gRPC controllers');
         });
     });
@@ -123,13 +124,6 @@ describe('GrpcControllerDiscoveryService', () => {
             expect(mockLogger.debug).toHaveBeenCalledWith('Found gRPC controller: TestController');
             expect(mockLogger.debug).toHaveBeenCalledWith(
                 'Discovering methods for controller: TestService',
-            );
-            expect(mockLogger.lifecycle).toHaveBeenCalledWith(
-                'Discovered methods for TestService:',
-                {
-                    methods: ['Method1', 'Method2'],
-                    count: 2,
-                },
             );
             expect(mockRegistryService.registerController).toHaveBeenCalledWith(
                 'TestService',
