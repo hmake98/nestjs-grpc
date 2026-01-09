@@ -24,7 +24,7 @@
         "build": "npm run clean && npm run compile && npm run declarations && npm run copy-bin",
         "build:watch": "npm run compile -- --watch",
         "clean": "rimraf dist",
-        "compile": "swc src -d dist",
+        "compile": "swc src -d dist --strip-leading-paths",
         "declarations": "tsc -p tsconfig.json --emitDeclarationOnly --outDir dist",
         "compile:tsc": "tsc -p tsconfig.json",
         "copy-bin": "mkdir -p dist/bin && cp bin/nestjs-grpc.js dist/bin/ && chmod +x dist/bin/nestjs-grpc.js",
