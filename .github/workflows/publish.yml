@@ -5,6 +5,18 @@ on:
     tags:
       - "v*.*.*" # Triggers on version tags like v1.5.0, v2.0.0, etc.
   workflow_dispatch: # Allow manual triggering from GitHub UI
+    inputs:
+      release-type:
+        description: "Release type (patch, minor, major, beta, rc)"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+          - beta
+          - rc
 
 env:
   NODE_OPTIONS: "--max-old-space-size=4096"
@@ -18,10 +30,43 @@ concurrency:
   cancel-in-progress: false # Prevent concurrent publishes
 
 jobs:
+  # Prepare release - only runs on manual workflow_dispatch
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Bump version and create tag
+        run: npm run release:${{ github.event.inputs.release-type }}
+
+      - name: Push changes and tags
+        run: git push && git push --tags
+
   # Quality checks job
   quality-checks:
     name: Quality Checks
     runs-on: ubuntu-latest
+    needs: [prepare-release]
+    if: always() && (github.event_name == 'push' || needs.prepare-release.result == 'success' || needs.prepare-release.result == 'skipped')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
